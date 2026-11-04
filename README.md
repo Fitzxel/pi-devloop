@@ -14,7 +14,9 @@ The extension relies on the host-provided `@earendil-works/pi-coding-agent` and 
 
 ## Herdr dev server
 
-Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). The extension exposes both agent tools (`dev_start`, `dev_status`, `dev_logs`, `dev_stop`) and Pi commands:
+Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). The extension exposes both agent tools (`dev_start`, `dev_status`, `dev_logs`, `dev_stop`) and Pi commands. When the agent invokes `dev_start` and readiness returns a URL, the extension automatically registers Chrome DevTools MCP and directs the agent to use the `pi-devloop-chrome` browser tools to navigate to that exact URL. This automation applies only to the agent tool; `/devloop:start` and `/devloop:browser` retain their existing behavior. Missing URLs skip browser registration, and registration errors preserve the running server state and provide a retry path.
+
+Commands:
 
 - `/devloop:start`, `/devloop:stop`, `/devloop:status`, `/devloop:logs [line-count]`
 - `/devloop:config` shows effective and explicitly configured project settings.

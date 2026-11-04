@@ -6,6 +6,7 @@ import { createFeedbackServer, createSessionToken } from './server.js';
 import { getDevLogs, readDevState, startDevServer, stopDevServer } from './herdr.js';
 import { getProjectConfig, parseSettingArgs, setProjectConfig } from './project-config.js';
 import { createChromeDevTools } from './chrome-devtools.js';
+import { automateDevStart } from './dev-start-automation.js';
 
 type OperationParams = { lines?: number };
 type Operation = (cwd: string, params?: OperationParams) => Promise<unknown>;
@@ -48,7 +49,7 @@ export default function (pi: ExtensionAPI) {
   const browser = createChromeDevTools(pi);
 
   const tools = [
-    { name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server in a Herdr pane and wait for its ready output.', operation: 'start', parameters: Type.Object({}) },
+    { name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server and wait for readiness. When a ready URL is available, Chrome DevTools MCP is registered automatically; then use its pi-devloop-chrome browser tools to navigate to that exact URL.', operation: 'start', parameters: Type.Object({}) },
     { name: 'dev_status', label: 'Dev server status', description: 'Read the saved dev server state and current Herdr pane output.', operation: 'status', parameters: Type.Object({}) },
     { name: 'dev_logs', label: 'Read dev server logs', description: 'Read recent output from the Herdr dev-server pane.', operation: 'logs', parameters: Type.Object({ lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })) }) },
     { name: 'dev_stop', label: 'Stop dev server', description: 'Close the Herdr pane created for the dev server.', operation: 'stop', parameters: Type.Object({}) },
@@ -57,7 +58,10 @@ export default function (pi: ExtensionAPI) {
     pi.registerTool({
       name: tool.name, label: tool.label, description: tool.description, parameters: tool.parameters,
       async execute(_id, params, _signal, _onUpdate, ctx) {
-        return asToolResult(await operations[tool.operation](ctx.cwd, params as OperationParams));
+        const result = await operations[tool.operation](ctx.cwd, params as OperationParams);
+        return asToolResult(tool.operation === 'start'
+          ? await automateDevStart(result as Record<string, unknown>, (cwd) => browser.connect(cwd), ctx.cwd)
+          : result);
       },
     });
   }
