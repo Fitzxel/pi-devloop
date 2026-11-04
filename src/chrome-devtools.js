@@ -1,13 +1,13 @@
 import { getProjectConfig } from './project-config.js';
 
 export const MCP_SERVER_NAME = 'pi-devloop-chrome';
-export const DEFAULT_BROWSER_URL = 'http://127.0.0.1:9222';
-
-export function createChromeDevToolsConfig(cwd, browserUrl = DEFAULT_BROWSER_URL) {
-  const endpoint = validateBrowserUrl(browserUrl);
+export function createChromeDevToolsConfig(cwd, browserUrl = null) {
+  const args = ['-y', 'chrome-devtools-mcp@latest'];
+  if (browserUrl == null) args.push('--isolated');
+  else args.push(`--browser-url=${validateBrowserUrl(browserUrl)}`);
   return {
     command: 'npx',
-    args: ['-y', 'chrome-devtools-mcp@latest', `--browser-url=${endpoint}`],
+    args,
     cwd,
     exposure: 'direct',
     description: 'Inspect and control the project browser through Chrome DevTools MCP.',
@@ -28,12 +28,12 @@ export function createChromeDevTools(pi) {
       const registered = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
       if (!registered) {
         ownedExtensionPath = null;
-        return { registered: false, owned: false, serverName: MCP_SERVER_NAME, browserUrl: null };
+        return { registered: false, owned: false, serverName: MCP_SERVER_NAME, browserUrl: null, mode: null };
       }
       const owned = isOwned(registered);
       if (!owned) ownedExtensionPath = null;
       const browserUrl = registered.config.args?.find((argument) => argument.startsWith('--browser-url='))?.slice('--browser-url='.length) ?? null;
-      return { registered: true, owned, serverName: MCP_SERVER_NAME, browserUrl };
+      return { registered: true, owned, serverName: MCP_SERVER_NAME, browserUrl, mode: browserUrl ? 'attach' : 'managed' };
     },
     disconnect() {
       const registered = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
@@ -60,7 +60,7 @@ export function createChromeDevTools(pi) {
     const current = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
     if (!current?.extensionPath) throw new Error(`Could not confirm ownership of MCP server "${MCP_SERVER_NAME}" after registration.`);
     ownedExtensionPath = current.extensionPath;
-    return { registered: true, owned: true, serverName: MCP_SERVER_NAME, browserUrl, alreadyRegistered: Boolean(alreadyRegistered) };
+    return { registered: true, owned: true, serverName: MCP_SERVER_NAME, browserUrl, mode: browserUrl ? 'attach' : 'managed', alreadyRegistered: Boolean(alreadyRegistered) };
   }
 }
 

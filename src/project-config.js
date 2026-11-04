@@ -3,7 +3,6 @@ import path from 'node:path';
 
 const CONFIG_PATH = '.pi/devloop.json';
 const ALLOWED_KEYS = new Set(['command', 'url', 'timeout', 'layout', 'tabName', 'browserUrl']);
-const DEFAULT_BROWSER_URL = 'http://127.0.0.1:9222';
 
 export async function readProjectSettings(cwd) {
   let config;
@@ -40,7 +39,7 @@ export async function getProjectConfig(cwd) {
     timeout: configured.timeout ?? configured.readyTimeoutMs ?? 30000,
     layout: configured.layout ?? 'tab',
     tabName: configured.tabName ?? 'devloop',
-    browserUrl: configured.browserUrl == null ? DEFAULT_BROWSER_URL : validateHttpUrl(configured.browserUrl, 'browserUrl'),
+    browserUrl: configured.browserUrl == null ? null : validateHttpUrl(configured.browserUrl, 'browserUrl'),
     configured: {
       command: configured.command ?? null,
       url: configured.url ?? null,

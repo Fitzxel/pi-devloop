@@ -21,25 +21,25 @@ Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). The extension exposes both a
 - `/devloop:set command <shell command>` sets the command; `/devloop:set url <http(s) URL>` sets a fixed URL override; `/devloop:set timeout <milliseconds>` sets the ready-output timeout.
 - `/devloop:set layout tab|split` chooses a new tab or a sibling split pane. The default is `tab`.
 - `/devloop:set tabName <name>` sets the label for the new tab; the default is `devloop`.
-- `/devloop:set browserUrl <http(s) URL>` sets the Chrome DevTools debugging endpoint; the default is `http://127.0.0.1:9222`.
-- Omit the value to clear an override, for example `/devloop:set url`. Clearing `layout` restores the `tab` default; clearing `tabName` restores `devloop`; clearing `browserUrl` restores the loopback default.
+- `/devloop:set browserUrl <http(s) URL>` optionally selects an existing debuggable Chrome instance instead of the MCP-managed isolated profile.
+- Omit the value to clear an override, for example `/devloop:set url`. Clearing `layout` restores the `tab` default; clearing `tabName` restores `devloop`; clearing `browserUrl` restores the MCP-managed isolated profile.
 
-These settings are stored in the current project's `.pi/devloop.json`; no manual file creation is needed. An unset command is detected from `scripts.dev` / `scripts.start` in `package.json`, an unset dev-server URL is parsed from ready output, and timeout defaults to 30000 ms. A configured dev-server URL overrides the URL parsed from startup output; `browserUrl` defaults to the loopback MCP endpoint. Legacy `readyPattern` and `readyTimeoutMs` config values remain supported.
+These settings are stored in the current project's `.pi/devloop.json`; no manual file creation is needed. An unset command is detected from `scripts.dev` / `scripts.start` in `package.json`, an unset dev-server URL is parsed from ready output, and timeout defaults to 30000 ms. A configured dev-server URL overrides the URL parsed from startup output; with `browserUrl` unset, Chrome DevTools MCP launches its isolated browser when explicitly requested. Legacy `readyPattern` and `readyTimeoutMs` config values remain supported.
 
 The configured command is submitted to Herdr's shell. Only set it in a project you trust. Runtime state is stored at `.pi/devloop/state.json`; add that file to `.gitignore` if you do not want it tracked. `dev_stop` closes the tab created for a tab layout, or just the pane for a split layout.
 
 ## Chrome DevTools MCP
 
-The MCP server connects only when requested; Pi does not start Chrome or download the MCP package on extension load. Start an existing Chrome instance with remote debugging enabled and a dedicated user-data directory (Chrome 136+ does not allow remote debugging against its default profile). Example on Linux:
+Chrome DevTools MCP is on demand: Pi does not start Chrome when the extension loads or when the dev server becomes ready. Run `/devloop:browser` or let the agent call `browser_connect` to register the MCP server. With no `browserUrl` configured, it uses `--isolated`: the MCP launches Chrome with a temporary user-data directory on the first browser-tool call, and removes that profile when the browser closes. The window shows Chrome's automation-control banner. Registration runs `npx -y chrome-devtools-mcp@latest` and may download the MCP package on first use. Use `new_page`, `navigate_page`, `take_snapshot`, and `take_screenshot` for browser work.
+
+To attach to an existing Chrome instead, start it with remote debugging and a dedicated user-data directory (Chrome 136+ does not allow remote debugging against its default profile). Example on Linux:
 
 ```sh
 mkdir -p "$HOME/.cache/pi-devloop/chrome-profile"
 google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.cache/pi-devloop/chrome-profile"
 ```
 
-Then run `/devloop:browser` or let the agent call `browser_connect`. By default it attaches to `http://127.0.0.1:9222`; set another endpoint for this project with `/devloop:set browserUrl http://127.0.0.1:9333`. Pi registers the official `chrome-devtools-mcp` stdio server with native MCP support and exposes its tools directly after connection. The first connection uses `npx -y chrome-devtools-mcp@latest` and may download the package. Use `new_page`, `navigate_page`, `take_snapshot`, and `take_screenshot` MCP tools for browser work.
-
-`/devloop:browser-status` and `browser_status` report whether this session registered the server; `/mcp` shows the live connection state and tool details. `/devloop:browser-stop` or `browser_disconnect` unregisters the MCP server but does not close the Chrome instance. Because these tools can navigate pages and execute page scripts, connect only to a browser profile you intend to expose to the agent.
+Set `/devloop:set browserUrl http://127.0.0.1:9222` (or the endpoint you started Chrome with), then run `/devloop:browser`; this preserves the existing-browser attach path and does not pass `--isolated`. `/devloop:browser-status` and `browser_status` report whether the server is registered and its `managed` or `attach` mode; registration alone does not mean Chrome has launched yet. `/mcp` shows live connection state and tool details. `/devloop:browser-stop` or `browser_disconnect` closes the MCP-managed browser and cleans up its temporary profile; in attach mode it only disconnects and leaves existing Chrome open. Since browser tools can navigate pages and execute page scripts, only attach to an existing profile you intend to expose to the agent.
 
 ## Browser feedback receiver
 

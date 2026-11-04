@@ -11,7 +11,7 @@ test('project settings are optional and can be changed independently', async (t)
   await writeFile(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
 
   assert.deepEqual(await getProjectConfig(cwd), {
-    command: 'npm run dev', url: null, timeout: 30000, layout: 'tab', tabName: 'devloop', browserUrl: 'http://127.0.0.1:9222',
+    command: 'npm run dev', url: null, timeout: 30000, layout: 'tab', tabName: 'devloop', browserUrl: null,
     configured: { command: null, url: null, timeout: null, layout: null, tabName: null, browserUrl: null },
   });
   await setProjectConfig(cwd, 'command', 'pnpm dev -- --host 0.0.0.0');
@@ -29,6 +29,8 @@ test('project settings are optional and can be changed independently', async (t)
 
   await setProjectConfig(cwd, 'url', 'https://user:pass@preview.example.test');
   assert.equal((await getProjectConfig(cwd)).url, 'https://user:pass@preview.example.test');
+  await setProjectConfig(cwd, 'browserUrl', undefined);
+  assert.equal((await getProjectConfig(cwd)).browserUrl, null, 'clearing browserUrl restores the MCP-managed browser mode');
   await setProjectConfig(cwd, 'url', undefined);
   assert.equal((await getProjectConfig(cwd)).url, null);
   assert.equal((await getProjectConfig(cwd)).command, 'pnpm dev -- --host 0.0.0.0');

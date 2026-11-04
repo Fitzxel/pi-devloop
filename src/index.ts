@@ -62,17 +62,17 @@ export default function (pi: ExtensionAPI) {
     });
   }
   pi.registerTool({
-    name: 'browser_connect', label: 'Connect Chrome DevTools', description: 'On demand, connect this session to Chrome DevTools MCP. Use the registered MCP browser tools for navigation and inspection.',
+    name: 'browser_connect', label: 'Connect Chrome DevTools', description: 'On demand, register Chrome DevTools MCP. Managed mode launches an isolated Chrome profile on the first browser-tool call; attach mode uses configured browserUrl. Use its MCP tools for navigation and inspection.',
     parameters: Type.Object({}),
     async execute(_id, _params, _signal, _onUpdate, ctx) { return asToolResult(await browser.connect(ctx.cwd)); },
   });
   pi.registerTool({
-    name: 'browser_status', label: 'Chrome MCP status', description: 'Report whether the Chrome DevTools MCP server is registered in this Pi session.',
+    name: 'browser_status', label: 'Chrome MCP status', description: 'Report whether Chrome DevTools MCP is registered in managed or attach mode; registration does not guarantee Chrome has launched yet.',
     parameters: Type.Object({}),
     async execute() { return asToolResult(browser.status()); },
   });
   pi.registerTool({
-    name: 'browser_disconnect', label: 'Disconnect Chrome DevTools', description: 'Unregister the Chrome DevTools MCP server from this Pi session without closing Chrome.',
+    name: 'browser_disconnect', label: 'Disconnect Chrome DevTools', description: 'Unregister Chrome DevTools MCP. This closes an MCP-launched browser; an attached existing Chrome remains open.',
     parameters: Type.Object({}),
     async execute() { return asToolResult(browser.disconnect()); },
   });
@@ -102,20 +102,23 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.registerCommand('devloop:browser', {
-    description: 'Connect to the configured Chrome browser through Chrome DevTools MCP on demand',
+    description: 'Register Chrome DevTools MCP on demand; managed mode launches isolated Chrome on first browser-tool use unless browserUrl is configured',
     handler: async (_args, ctx) => {
       try {
         const state = await browser.connect(ctx.cwd);
-        ctx.ui.notify(`Chrome DevTools MCP registered for ${state.browserUrl}. Use its MCP tools to navigate and inspect pages; check /mcp for connection details.`, 'info');
+        const target = state.mode === 'managed'
+          ? 'the isolated Chrome profile will launch on the first browser-tool call'
+          : `the existing browser at ${state.browserUrl} will be attached on the first browser-tool call`;
+        ctx.ui.notify(`Chrome DevTools MCP registered in ${state.mode} mode; ${target}. Use its MCP tools to navigate and inspect pages; check /mcp for connection details.`, 'info');
       } catch (error) { ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error'); }
     },
   });
   pi.registerCommand('devloop:browser-status', {
-    description: 'Show whether Chrome DevTools MCP is registered in this Pi session',
+    description: 'Show whether Chrome DevTools MCP is registered and its managed or attach mode',
     handler: async (_args, ctx) => ctx.ui.notify(JSON.stringify(browser.status(), null, 2), 'info'),
   });
   pi.registerCommand('devloop:browser-stop', {
-    description: 'Disconnect Chrome DevTools MCP without closing Chrome',
+    description: 'Disconnect Chrome DevTools MCP; closes its managed browser but leaves an attached existing Chrome open',
     handler: async (_args, ctx) => ctx.ui.notify(JSON.stringify(browser.disconnect(), null, 2), 'info'),
   });
 
