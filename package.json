@@ -1,0 +1,15 @@
+{
+  "name": "pi-devloop",
+  "version": "0.1.0",
+  "description": "Pi extension for managing Herdr dev servers and browser feedback",
+  "type": "module",
+  "license": "MIT",
+  "files": ["src", "overlay", "README.md"],
+  "scripts": {
+    "test": "node --test"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "engines": { "node": ">=20" }
+}
