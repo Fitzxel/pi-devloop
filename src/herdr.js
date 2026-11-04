@@ -2,9 +2,33 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { getProjectConfig, readProjectSettings } from './project-config.js';
 
 const exec = promisify(execFile);
 const READY_DEFAULT = '(https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?\\/?|ready in .+)';
+
+export function resolveDevUrl(configuredUrl, readyOutput) {
+  return configuredUrl ?? readyOutput.match(/https?:\/\/[^\s\u001b]+/)?.[0] ?? null;
+}
+
+export function buildPaneCreationCommand(cwd, config = {}, env = process.env) {
+  if ((config.layout ?? 'tab') === 'split') {
+    return {
+      layout: 'split',
+      args: ['pane', 'split', '--current', '--direction', 'right', '--cwd', cwd, '--no-focus'],
+    };
+  }
+  const args = ['tab', 'create'];
+  if (env.HERDR_WORKSPACE_ID) args.push('--workspace', env.HERDR_WORKSPACE_ID);
+  args.push('--cwd', cwd, '--label', config.tabName ?? 'devloop', '--no-focus');
+  return { layout: 'tab', args };
+}
+
+export function buildPaneCloseCommand(state) {
+  return state.layout === 'tab' && state.tab_id
+    ? ['tab', 'close', state.tab_id]
+    : ['pane', 'close', state.pane_id];
+}
 
 export async function runHerdr(args, { cwd = process.cwd(), env = process.env } = {}) {
   if (env.HERDR_ENV !== '1') throw new Error('Not running inside a Herdr-managed pane (HERDR_ENV=1 required).');
@@ -17,16 +41,16 @@ export async function runHerdr(args, { cwd = process.cwd(), env = process.env } 
 }
 
 export async function loadConfig(cwd) {
-  let config = {};
-  try { config = JSON.parse(await readFile(path.join(cwd, '.pi/devloop.json'), 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw new Error(`Invalid .pi/devloop.json: ${error.message}`); }
-  if (config.command) return { ...config, command: validateCommand(config.command) };
-  let pkg;
-  try { pkg = JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8')); }
-  catch { throw new Error('Set "command" in .pi/devloop.json or add a package.json dev script.'); }
-  const script = pkg.scripts?.dev ? 'dev' : pkg.scripts?.start ? 'start' : null;
-  if (!script) throw new Error('No package.json dev or start script found; configure .pi/devloop.json.');
-  return { readyPattern: READY_DEFAULT, ...config, command: `npm run ${script}` };
+  const configured = await readProjectSettings(cwd);
+  const effective = await getProjectConfig(cwd);
+  return {
+    ...configured,
+    command: validateCommand(effective.command),
+    url: effective.url,
+    timeout: effective.timeout,
+    readyPattern: configured.readyPattern ?? READY_DEFAULT,
+    readyTimeoutMs: effective.timeout,
+  };
 }
 
 function validateCommand(command) {
@@ -36,21 +60,25 @@ function validateCommand(command) {
 
 export async function startDevServer({ cwd = process.cwd(), config: supplied, stateFile = path.join(cwd, '.pi/devloop/state.json') } = {}) {
   const config = supplied ?? await loadConfig(cwd);
-  const paneOutput = await runHerdr(['pane', 'split', '--current', '--direction', 'right', '--cwd', cwd, '--no-focus'], { cwd });
+  const creation = buildPaneCreationCommand(cwd, config, process.env);
+  const paneOutput = await runHerdr(creation.args, { cwd });
   const created = JSON.parse(paneOutput);
-  const paneId = created.result?.pane?.pane_id;
-  if (!paneId) throw new Error('Herdr pane split did not return result.pane.pane_id.');
+  const paneId = creation.layout === 'tab' ? created.result?.root_pane?.pane_id : created.result?.pane?.pane_id;
+  const tabId = creation.layout === 'tab' ? (created.result?.tab?.tab_id ?? created.result?.tab?.id) : undefined;
+  if (!paneId || (creation.layout === 'tab' && !tabId)) throw new Error(`Herdr ${creation.layout} creation did not return its pane and tab IDs.`);
   try {
     await runHerdr(['pane', 'run', paneId, config.command], { cwd });
     const pattern = config.readyPattern ?? READY_DEFAULT;
-    const readyOutput = await runHerdr(['pane', 'wait-output', paneId, '--regex', pattern, '--source', 'recent-unwrapped', '--timeout', String(config.readyTimeoutMs ?? 30000)], { cwd });
-    const url = readyOutput.match(/https?:\/\/[^\s\u001b]+/)?.[0] ?? null;
-    const state = { pane_id: paneId, command: config.command, url, status: 'running', started_at: new Date().toISOString() };
+    const readyOutput = await runHerdr(['pane', 'wait-output', paneId, '--regex', pattern, '--source', 'recent-unwrapped', '--timeout', String(config.timeout ?? config.readyTimeoutMs ?? 30000)], { cwd });
+    const url = resolveDevUrl(config.url, readyOutput);
+    const state = { pane_id: paneId, tab_id: tabId, layout: creation.layout, tab_name: creation.layout === 'tab' ? (config.tabName ?? 'devloop') : undefined, command: config.command, url, status: 'running', started_at: new Date().toISOString() };
     await mkdir(path.dirname(stateFile), { recursive: true });
     await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
     return state;
   } catch (error) {
-    try { await runHerdr(['pane', 'close', paneId], { cwd }); } catch { /* preserve original error */ }
+    try {
+      await runHerdr(buildPaneCloseCommand({ layout: creation.layout, pane_id: paneId, tab_id: tabId }), { cwd });
+    } catch { /* preserve original error */ }
     throw error;
   }
 }
@@ -68,7 +96,7 @@ export async function getDevLogs(state, { cwd = process.cwd(), lines = 80 } = {}
 export async function stopDevServer(stateFile, { cwd = process.cwd() } = {}) {
   const state = await readDevState(stateFile);
   if (!state) return { status: 'stopped' };
-  await runHerdr(['pane', 'close', state.pane_id], { cwd });
+  await runHerdr(buildPaneCloseCommand(state), { cwd });
   await writeFile(stateFile, `${JSON.stringify({ ...state, status: 'stopped' }, null, 2)}\n`, { mode: 0o600 });
   return { ...state, status: 'stopped' };
 }

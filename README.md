@@ -14,17 +14,18 @@ The extension relies on the host-provided `@earendil-works/pi-coding-agent` and 
 
 ## Herdr dev server
 
-Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). `dev_start` reads `.pi/devloop.json`, or detects `scripts.dev` / `scripts.start` from `package.json`, creates a sibling pane without focusing it, starts the command, and waits for ready output. Configuration example:
+Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). The extension exposes both agent tools (`dev_start`, `dev_status`, `dev_logs`, `dev_stop`) and Pi commands:
 
-```json
-{
-  "command": "pnpm dev",
-  "readyPattern": "http://localhost:[0-9]+",
-  "readyTimeoutMs": 30000
-}
-```
+- `/devloop:start`, `/devloop:stop`, `/devloop:status`, `/devloop:logs [line-count]`
+- `/devloop:config` shows effective and explicitly configured project settings.
+- `/devloop:set command <shell command>` sets the command; `/devloop:set url <http(s) URL>` sets a fixed URL override; `/devloop:set timeout <milliseconds>` sets the ready-output timeout.
+- `/devloop:set layout tab|split` chooses a new tab or a sibling split pane. The default is `tab`.
+- `/devloop:set tabName <name>` sets the label for the new tab; the default is `devloop`.
+- Omit the value to clear an override, for example `/devloop:set url`. Clearing `layout` restores the `tab` default; clearing `tabName` restores `devloop`.
 
-The configured command is submitted to Herdr's shell. Only set it in a project you trust. State is stored at `.pi/devloop/state.json`; add that runtime file to `.gitignore` if you do not want it tracked. `dev_stop` closes the pane recorded by this extension.
+These settings are stored in the current project's `.pi/devloop.json`; no manual file creation is needed. Each setting is optional: an unset command is detected from `scripts.dev` / `scripts.start` in `package.json`, an unset URL is parsed from ready output, and timeout defaults to 30000 ms. A configured URL overrides the URL parsed from startup output. Legacy `readyPattern` and `readyTimeoutMs` config values remain supported.
+
+The configured command is submitted to Herdr's shell. Only set it in a project you trust. Runtime state is stored at `.pi/devloop/state.json`; add that file to `.gitignore` if you do not want it tracked. `dev_stop` closes the tab created for a tab layout, or just the pane for a split layout.
 
 ## Browser feedback receiver
 

@@ -1,45 +1,105 @@
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createFeedbackServer, createSessionToken } from './server.js';
 import { getDevLogs, readDevState, startDevServer, stopDevServer } from './herdr.js';
+import { getProjectConfig, parseSettingArgs, setProjectConfig } from './project-config.js';
+
+type OperationParams = { lines?: number };
+type Operation = (cwd: string, params?: OperationParams) => Promise<unknown>;
+
+function createOperations(): Record<string, Operation> {
+  return {
+    start: async (cwd) => startDevServer({ cwd, stateFile: path.join(cwd, '.pi/devloop/state.json') }),
+    status: async (cwd) => {
+      const state = await readDevState(path.join(cwd, '.pi/devloop/state.json'));
+      if (!state || state.status !== 'running') return state ?? { status: 'stopped' };
+      return { ...state, logs: await getDevLogs(state, { cwd, lines: 40 }) };
+    },
+    logs: async (cwd, params) => {
+      const state = await readDevState(path.join(cwd, '.pi/devloop/state.json'));
+      if (!state || state.status !== 'running') return { status: 'stopped' };
+      return { pane_id: state.pane_id, logs: await getDevLogs(state, { cwd, lines: params?.lines ?? 80 }) };
+    },
+    stop: async (cwd) => stopDevServer(path.join(cwd, '.pi/devloop/state.json'), { cwd }),
+  };
+}
+
+function asToolResult(value: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
+}
+
+async function runCommand(ctx: ExtensionContext, action: Operation, params?: OperationParams) {
+  try {
+    const output = await action(ctx.cwd, params);
+    ctx.ui.notify(JSON.stringify(output, null, 2), 'info');
+  } catch (error) {
+    ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
 
 export default function (pi: ExtensionAPI) {
   let feedbackServer: ReturnType<typeof createFeedbackServer> | undefined;
   let feedbackToken: string | undefined;
   let feedbackPort: number | undefined;
-  const stateFile = path.join(process.cwd(), '.pi/devloop/state.json');
+  const operations = createOperations();
 
-  const result = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
-  pi.registerTool({
-    name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server in a Herdr pane and wait for its ready output.',
-    parameters: Type.Object({}),
-    async execute() { return result(await startDevServer({ cwd: process.cwd(), stateFile })); },
-  });
-  pi.registerTool({
-    name: 'dev_status', label: 'Dev server status', description: 'Read the saved dev server state and current Herdr pane output.',
-    parameters: Type.Object({}),
-    async execute() {
-      const state = await readDevState(stateFile);
-      if (!state || state.status !== 'running') return result(state ?? { status: 'stopped' });
-      const logs = await getDevLogs(state, { lines: 40 });
-      return result({ ...state, logs });
+  const tools = [
+    { name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server in a Herdr pane and wait for its ready output.', operation: 'start', parameters: Type.Object({}) },
+    { name: 'dev_status', label: 'Dev server status', description: 'Read the saved dev server state and current Herdr pane output.', operation: 'status', parameters: Type.Object({}) },
+    { name: 'dev_logs', label: 'Read dev server logs', description: 'Read recent output from the Herdr dev-server pane.', operation: 'logs', parameters: Type.Object({ lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })) }) },
+    { name: 'dev_stop', label: 'Stop dev server', description: 'Close the Herdr pane created for the dev server.', operation: 'stop', parameters: Type.Object({}) },
+  ] as const;
+  for (const tool of tools) {
+    pi.registerTool({
+      name: tool.name, label: tool.label, description: tool.description, parameters: tool.parameters,
+      async execute(_id, params, _signal, _onUpdate, ctx) {
+        return asToolResult(await operations[tool.operation](ctx.cwd, params as OperationParams));
+      },
+    });
+  }
+
+  const commands: Array<{ name: string; description: string; operation: keyof typeof operations; parse?: (args: string) => OperationParams }> = [
+    { name: 'devloop:start', description: 'Start the project dev server in Herdr', operation: 'start' },
+    { name: 'devloop:stop', description: 'Stop the project dev server', operation: 'stop' },
+    { name: 'devloop:status', description: 'Show project dev server status and recent output', operation: 'status' },
+    { name: 'devloop:logs', description: 'Show recent project dev-server logs; optionally pass a line count', operation: 'logs', parse: (args) => {
+      if (!args.trim()) return {};
+      if (!/^\d+$/.test(args.trim())) throw new Error('Usage: /devloop:logs [line-count]');
+      return { lines: Number(args.trim()) };
+    } },
+  ];
+  for (const command of commands) {
+    pi.registerCommand(command.name, {
+      description: command.description,
+      handler: async (args, ctx) => {
+        try {
+          const params = command.parse?.(args) ?? {};
+          await runCommand(ctx, operations[command.operation], params);
+        } catch (error) {
+          ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        }
+      },
+    });
+  }
+
+  pi.registerCommand('devloop:config', {
+    description: 'Show effective devloop settings for the current project',
+    handler: async (_args, ctx) => {
+      try { ctx.ui.notify(JSON.stringify(await getProjectConfig(ctx.cwd), null, 2), 'info'); }
+      catch (error) { ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error'); }
     },
   });
-  pi.registerTool({
-    name: 'dev_logs', label: 'Read dev server logs', description: 'Read recent output from the running Herdr dev-server pane.',
-    parameters: Type.Object({ lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })) }),
-    async execute(_id, params) {
-      const state = await readDevState(stateFile);
-      if (!state || state.status !== 'running') return result({ status: 'stopped' });
-      return result({ pane_id: state.pane_id, logs: await getDevLogs(state, { lines: params.lines ?? 80 }) });
+  pi.registerCommand('devloop:set', {
+    description: 'Set or clear the current project command, URL, or timeout',
+    handler: async (args, ctx) => {
+      try {
+        const { key, value } = parseSettingArgs(args);
+        const config = await setProjectConfig(ctx.cwd, key, value);
+        ctx.ui.notify(`${key} ${value === undefined ? 'cleared' : 'updated'}.\n${JSON.stringify(config, null, 2)}`, 'info');
+      } catch (error) { ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error'); }
     },
-  });
-  pi.registerTool({
-    name: 'dev_stop', label: 'Stop dev server', description: 'Close the Herdr pane created for the dev server.',
-    parameters: Type.Object({}),
-    async execute() { return result(await stopDevServer(stateFile)); },
   });
 
   pi.registerCommand('devloop', {
@@ -52,17 +112,17 @@ export default function (pi: ExtensionAPI) {
         } });
         const address = await feedbackServer.listen();
         feedbackPort = address.port;
+        const stateFile = path.join(ctx.cwd, '.pi/devloop/state.json');
         await mkdir(path.dirname(stateFile), { recursive: true });
-        let state = await readDevState(stateFile) ?? { status: 'stopped' };
-        state = { ...state, feedback: { host: '127.0.0.1', port: feedbackPort } };
-        await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+        const state = await readDevState(stateFile) ?? { status: 'stopped' };
+        await writeFile(stateFile, `${JSON.stringify({ ...state, feedback: { host: '127.0.0.1', port: feedbackPort } }, null, 2)}\n`, { mode: 0o600 });
       }
       ctx.ui.notify(`Feedback endpoint: http://127.0.0.1:${feedbackPort} (token: ${feedbackToken})`, 'info');
     },
   });
-  pi.on('before_agent_start', async (_event, _ctx) => {
+  pi.on('before_agent_start', async (_event, ctx) => {
     try {
-      const state = await readDevState(stateFile);
+      const state = await readDevState(path.join(ctx.cwd, '.pi/devloop/state.json'));
       if (!state?.status || state.status === 'stopped') return;
       return { message: { customType: 'devloop-status', content: `dev server: ${state.status}${state.url ? ` at ${state.url}` : ''}${feedbackPort ? `; feedback endpoint at 127.0.0.1:${feedbackPort}` : ''}`, display: false } };
     } catch { /* status context is best-effort */ }
