@@ -8,7 +8,25 @@ const exec = promisify(execFile);
 const READY_DEFAULT = '(https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?\\/?|ready in .+)';
 
 export function resolveDevUrl(configuredUrl, readyOutput) {
-  return configuredUrl ?? readyOutput.match(/https?:\/\/[^\s\u001b]+/)?.[0] ?? null;
+  if (configuredUrl !== null && configuredUrl !== undefined) return configuredUrl;
+  return getReadyOutputText(readyOutput).match(/https?:\/\/[^\s\u001b]+/)?.[0] ?? null;
+}
+
+function getReadyOutputText(output) {
+  try {
+    let result = JSON.parse(output);
+    if (typeof result === 'string') {
+      try { result = JSON.parse(result); } catch { return result; }
+    }
+    if (typeof result === 'string') return result;
+    for (const payload of [result?.result, result]) {
+      if (typeof payload?.matched_line === 'string' && /^https?:\/\//.test(payload.matched_line)) return payload.matched_line;
+      if (typeof payload?.url === 'string' && /^https?:\/\//.test(payload.url)) return payload.url;
+      if (typeof payload?.read?.text === 'string') return payload.read.text;
+      if (typeof payload?.text === 'string') return payload.text;
+    }
+  } catch { /* plain terminal output */ }
+  return output;
 }
 
 export function buildPaneCreationCommand(cwd, config = {}, env = process.env) {
