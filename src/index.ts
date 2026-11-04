@@ -5,6 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createFeedbackServer, createSessionToken } from './server.js';
 import { getDevLogs, readDevState, startDevServer, stopDevServer } from './herdr.js';
 import { getProjectConfig, parseSettingArgs, setProjectConfig } from './project-config.js';
+import { createChromeDevTools } from './chrome-devtools.js';
 
 type OperationParams = { lines?: number };
 type Operation = (cwd: string, params?: OperationParams) => Promise<unknown>;
@@ -44,6 +45,7 @@ export default function (pi: ExtensionAPI) {
   let feedbackToken: string | undefined;
   let feedbackPort: number | undefined;
   const operations = createOperations();
+  const browser = createChromeDevTools(pi);
 
   const tools = [
     { name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server in a Herdr pane and wait for its ready output.', operation: 'start', parameters: Type.Object({}) },
@@ -59,6 +61,21 @@ export default function (pi: ExtensionAPI) {
       },
     });
   }
+  pi.registerTool({
+    name: 'browser_connect', label: 'Connect Chrome DevTools', description: 'On demand, connect this session to Chrome DevTools MCP. Use the registered MCP browser tools for navigation and inspection.',
+    parameters: Type.Object({}),
+    async execute(_id, _params, _signal, _onUpdate, ctx) { return asToolResult(await browser.connect(ctx.cwd)); },
+  });
+  pi.registerTool({
+    name: 'browser_status', label: 'Chrome MCP status', description: 'Report whether the Chrome DevTools MCP server is registered in this Pi session.',
+    parameters: Type.Object({}),
+    async execute() { return asToolResult(browser.status()); },
+  });
+  pi.registerTool({
+    name: 'browser_disconnect', label: 'Disconnect Chrome DevTools', description: 'Unregister the Chrome DevTools MCP server from this Pi session without closing Chrome.',
+    parameters: Type.Object({}),
+    async execute() { return asToolResult(browser.disconnect()); },
+  });
 
   const commands: Array<{ name: string; description: string; operation: keyof typeof operations; parse?: (args: string) => OperationParams }> = [
     { name: 'devloop:start', description: 'Start the project dev server in Herdr', operation: 'start' },
@@ -84,6 +101,24 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
+  pi.registerCommand('devloop:browser', {
+    description: 'Connect to the configured Chrome browser through Chrome DevTools MCP on demand',
+    handler: async (_args, ctx) => {
+      try {
+        const state = await browser.connect(ctx.cwd);
+        ctx.ui.notify(`Chrome DevTools MCP registered for ${state.browserUrl}. Use its MCP tools to navigate and inspect pages; check /mcp for connection details.`, 'info');
+      } catch (error) { ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error'); }
+    },
+  });
+  pi.registerCommand('devloop:browser-status', {
+    description: 'Show whether Chrome DevTools MCP is registered in this Pi session',
+    handler: async (_args, ctx) => ctx.ui.notify(JSON.stringify(browser.status(), null, 2), 'info'),
+  });
+  pi.registerCommand('devloop:browser-stop', {
+    description: 'Disconnect Chrome DevTools MCP without closing Chrome',
+    handler: async (_args, ctx) => ctx.ui.notify(JSON.stringify(browser.disconnect(), null, 2), 'info'),
+  });
+
   pi.registerCommand('devloop:config', {
     description: 'Show effective devloop settings for the current project',
     handler: async (_args, ctx) => {
@@ -92,7 +127,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
   pi.registerCommand('devloop:set', {
-    description: 'Set or clear the current project command, URL, or timeout',
+    description: 'Set or clear current project dev-server and browser connection settings',
     handler: async (args, ctx) => {
       try {
         const { key, value } = parseSettingArgs(args);
