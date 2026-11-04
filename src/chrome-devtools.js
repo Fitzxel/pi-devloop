@@ -14,16 +14,35 @@ export function createChromeDevToolsConfig(cwd, browserUrl = null) {
   };
 }
 
-export function createChromeDevTools(pi) {
+export function createChromeDevTools(pi, launcher) {
   let registrationPromise;
   let ownedExtensionPath = null;
   const isOwned = (server) => Boolean(ownedExtensionPath && server?.extensionPath === ownedExtensionPath);
+
   return {
-    connect(cwd) {
-      if (registrationPromise) return registrationPromise;
-      registrationPromise = register(cwd).finally(() => { registrationPromise = undefined; });
-      return registrationPromise;
+    async openReady(cwd, url) {
+      const existing = this.status();
+      if (existing.registered && !existing.owned) {
+        throw new Error(`MCP server "${MCP_SERVER_NAME}" is registered by another extension; refusing to open the browser.`);
+      }
+      const { browserUrl } = await getProjectConfig(cwd);
+      const opened = browserUrl
+        ? await launcher.openConfigured(browserUrl, url)
+        : await launcher.open(url);
+      try {
+        const connected = await registerSerially(cwd, opened.browserUrl);
+        if (!opened.owned && launcher?.owned && launcher.endpoint !== opened.browserUrl) await launcher.close();
+        return { ...connected, browserUrl: opened.browserUrl, mode: opened.owned ? 'managed' : 'attach', browserOwned: opened.owned };
+      } catch (error) {
+        if (opened.owned) await launcher.close();
+        throw error;
+      }
     },
+
+    connect(cwd, browserUrlOverride) {
+      return registerSerially(cwd, browserUrlOverride);
+    },
+
     status() {
       const registered = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
       if (!registered) {
@@ -33,34 +52,53 @@ export function createChromeDevTools(pi) {
       const owned = isOwned(registered);
       if (!owned) ownedExtensionPath = null;
       const browserUrl = registered.config.args?.find((argument) => argument.startsWith('--browser-url='))?.slice('--browser-url='.length) ?? null;
-      return { registered: true, owned, serverName: MCP_SERVER_NAME, browserUrl, mode: browserUrl ? 'attach' : 'managed' };
+      const mode = owned && launcher?.owned && launcher.endpoint === browserUrl ? 'managed' : browserUrl ? 'attach' : 'managed';
+      return { registered: true, owned, serverName: MCP_SERVER_NAME, browserUrl, mode };
     },
-    disconnect() {
+
+    async disconnect() {
       const registered = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
       const owned = isOwned(registered);
       if (!owned) {
         ownedExtensionPath = null;
         return { registered: Boolean(registered), owned: false, serverName: MCP_SERVER_NAME, disconnected: false };
       }
-      pi.unregisterMcpServer(MCP_SERVER_NAME);
+      await pi.unregisterMcpServer(MCP_SERVER_NAME);
       ownedExtensionPath = null;
-      return { registered: false, owned: false, serverName: MCP_SERVER_NAME, disconnected: true };
+      const browserClosed = await launcher?.close() ?? false;
+      return { registered: false, owned: false, serverName: MCP_SERVER_NAME, disconnected: true, ...(browserClosed ? { browserClosed: true } : {}) };
     },
   };
 
-  async function register(cwd) {
-    const { browserUrl } = await getProjectConfig(cwd);
+  function registerSerially(cwd, browserUrlOverride) {
+    const previous = registrationPromise;
+    const pending = (previous?.catch(() => {}) ?? Promise.resolve())
+      .then(() => register(cwd, browserUrlOverride));
+    registrationPromise = pending;
+    return pending.finally(() => { if (registrationPromise === pending) registrationPromise = undefined; });
+  }
+
+  async function register(cwd, browserUrlOverride) {
+    const { browserUrl: configuredUrl } = await getProjectConfig(cwd);
+    const browserUrl = browserUrlOverride ?? configuredUrl ?? launcher?.endpoint ?? null;
     const config = createChromeDevToolsConfig(cwd, browserUrl);
     const previous = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
     if (previous && !isOwned(previous)) {
       throw new Error(`MCP server name "${MCP_SERVER_NAME}" is already registered by another extension (${previous.extensionPath}).`);
     }
     const alreadyRegistered = previous && hasSameConfig(previous.config, config);
-    if (!alreadyRegistered) pi.registerMcpServer(MCP_SERVER_NAME, config);
+    if (!alreadyRegistered) {
+      if (previous && isOwned(previous)) {
+        await pi.unregisterMcpServer(MCP_SERVER_NAME);
+        ownedExtensionPath = null;
+      }
+      pi.registerMcpServer(MCP_SERVER_NAME, config);
+    }
     const current = pi.getMcpServers().find((server) => server.name === MCP_SERVER_NAME);
     if (!current?.extensionPath) throw new Error(`Could not confirm ownership of MCP server "${MCP_SERVER_NAME}" after registration.`);
     ownedExtensionPath = current.extensionPath;
-    return { registered: true, owned: true, serverName: MCP_SERVER_NAME, browserUrl, mode: browserUrl ? 'attach' : 'managed', alreadyRegistered: Boolean(alreadyRegistered) };
+    const mode = launcher?.owned && launcher.endpoint === browserUrl ? 'managed' : browserUrl ? 'attach' : 'managed';
+    return { registered: true, owned: true, serverName: MCP_SERVER_NAME, browserUrl, mode, alreadyRegistered: Boolean(alreadyRegistered) };
   }
 }
 

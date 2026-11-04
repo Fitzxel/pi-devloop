@@ -2,21 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { automateDevStart } from './dev-start-automation.js';
 
-test('registers browser for a ready URL and preserves state with navigation guidance', async () => {
-  let cwdSeen;
-  const result = await automateDevStart({ status: 'running', url: 'http://localhost:3000', pane_id: 'p1' }, async (cwd) => { cwdSeen = cwd; return {}; }, '/project');
-  assert.equal(cwdSeen, '/project');
-  assert.deepEqual(result, { status: 'running', url: 'http://localhost:3000', pane_id: 'p1', browser: 'registered', guidance: 'Use the pi-devloop-chrome browser tools to navigate to http://localhost:3000.' });
+test('opens Chrome at a ready URL and returns browser mode and MCP endpoint with server state', async () => {
+  let call;
+  const result = await automateDevStart(
+    { status: 'running', url: 'http://localhost:3000', pane_id: 'p1' },
+    async (cwd, url) => { call = { cwd, url }; return { mode: 'managed', browserUrl: 'http://127.0.0.1:43127', serverName: 'pi-devloop-chrome' }; },
+    '/project',
+  );
+  assert.deepEqual(call, { cwd: '/project', url: 'http://localhost:3000' });
+  assert.deepEqual(result, {
+    status: 'running', url: 'http://localhost:3000', pane_id: 'p1', browser: 'opened',
+    browserMode: 'managed', browserUrl: 'http://127.0.0.1:43127', browserServerName: 'pi-devloop-chrome',
+  });
 });
 
-test('skips registration when ready URL is missing', async () => {
+test('skips browser launch and registration when ready URL is missing', async () => {
   let called = false;
   const result = await automateDevStart({ status: 'running' }, async () => { called = true; }, '/project');
   assert.equal(called, false);
-  assert.deepEqual(result, { status: 'running', browser: 'skipped', guidance: 'Browser opening skipped because the dev server has no ready URL.' });
+  assert.deepEqual(result, { status: 'running', browser: 'skipped', browserReason: 'No ready URL was detected.' });
 });
 
-test('preserves successful server state when browser registration fails', async () => {
-  const result = await automateDevStart({ status: 'running', url: 'http://localhost:3000' }, async () => { throw new Error('registration failed'); }, '/project');
-  assert.deepEqual(result, { status: 'running', url: 'http://localhost:3000', browser: 'error', browserError: 'registration failed', guidance: 'Retry browser registration with browser_connect, then navigate to http://localhost:3000.' });
+test('preserves successful server state when browser opening or MCP registration fails', async () => {
+  const result = await automateDevStart(
+    { status: 'running', url: 'http://localhost:3000', pane_id: 'p1' },
+    async () => { throw new Error('registration failed'); },
+    '/project',
+  );
+  assert.deepEqual(result, { status: 'running', url: 'http://localhost:3000', pane_id: 'p1', browser: 'error', browserError: 'registration failed' });
+});
+
+test('does not open a browser for a non-running server result', async () => {
+  let called = false;
+  const state = { status: 'stopped' };
+  assert.equal(await automateDevStart(state, async () => { called = true; }, '/project'), state);
+  assert.equal(called, false);
 });

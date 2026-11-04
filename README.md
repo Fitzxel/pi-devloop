@@ -32,16 +32,20 @@ The configured command is submitted to Herdr's shell. Only set it in a project y
 
 ## Chrome DevTools MCP
 
-Chrome DevTools MCP is on demand: Pi does not start Chrome when the extension loads or when the dev server becomes ready. Run `/devloop:browser` or let the agent call `browser_connect` to register the MCP server. With no `browserUrl` configured, it uses `--isolated`: the MCP launches Chrome with a temporary user-data directory on the first browser-tool call, and removes that profile when the browser closes. The window shows Chrome's automation-control banner. Registration runs `npx -y chrome-devtools-mcp@latest` and may download the MCP package on first use. Use `new_page`, `navigate_page`, `take_snapshot`, and `take_screenshot` for browser work.
+Pi does not start Chrome when the extension loads. When the agent invokes `dev_start` and the dev server reports a ready URL, the extension **opens that URL in a Chrome window immediately**, then registers the native `pi-devloop-chrome` MCP against that same browser. With no `browserUrl` configured, devloop launches Chrome with `--enable-automation`, a unique temporary user-data directory, and an ephemeral remote-debugging port; the tool result includes the URL and browser mode. Set `CHROME_PATH` if Chrome is not available under the standard executable name for your platform. If the browser launch or MCP attachment fails, `dev_start` still reports the running server and the browser error. This automation is for the agent tool `dev_start`; the `/devloop:start` command keeps its existing behavior.
 
-To attach to an existing Chrome instead, start it with remote debugging and a dedicated user-data directory (Chrome 136+ does not allow remote debugging against its default profile). Example on Linux:
+If `browserUrl` is configured, devloop does not launch or close an existing browser: it opens the ready URL in a new tab through Chrome's DevTools endpoint and attaches the MCP to that browser. Only configure an endpoint for a browser profile you intend to expose to the agent.
+
+Manual activation remains available. Run `/devloop:browser` or call `browser_connect` to register Chrome DevTools MCP without starting the dev server. In this manual path, an unset `browserUrl` uses the MCP's `--isolated` mode and Chrome launches on the first browser-tool call; `npx -y chrome-devtools-mcp@latest` may download the MCP package on first use. Use tools such as `new_page`, `navigate_page`, `take_snapshot`, and `take_screenshot` for subsequent browser work.
+
+To attach manually to an existing Chrome, start it with remote debugging and a dedicated user-data directory (Chrome 136+ does not allow remote debugging against its default profile). Example on Linux:
 
 ```sh
 mkdir -p "$HOME/.cache/pi-devloop/chrome-profile"
 google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.cache/pi-devloop/chrome-profile"
 ```
 
-Set `/devloop:set browserUrl http://127.0.0.1:9222` (or the endpoint you started Chrome with), then run `/devloop:browser`; this preserves the existing-browser attach path and does not pass `--isolated`. `/devloop:browser-status` and `browser_status` report whether the server is registered and its `managed` or `attach` mode; registration alone does not mean Chrome has launched yet. `/mcp` shows live connection state and tool details. `/devloop:browser-stop` or `browser_disconnect` closes the MCP-managed browser and cleans up its temporary profile; in attach mode it only disconnects and leaves existing Chrome open. Since browser tools can navigate pages and execute page scripts, only attach to an existing profile you intend to expose to the agent.
+Set `/devloop:set browserUrl http://127.0.0.1:9222` (or the endpoint you started Chrome with), then run `/devloop:browser`. `/devloop:browser-status` and `browser_status` report registration and mode; `/mcp` shows live connection details. `/devloop:browser-stop` or `browser_disconnect` closes only a Chrome process launched by devloop and cleans its temporary profile; a configured existing browser is left open. `/devloop:stop` stops the dev server but leaves the Chrome window open. Browser tools can navigate pages and execute page scripts, so only expose a profile to the agent when you intend it.
 
 ## Browser feedback receiver
 

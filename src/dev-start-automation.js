@@ -1,12 +1,22 @@
-export async function automateDevStart(state, registerBrowser, cwd) {
+export async function automateDevStart(state, openBrowser, cwd) {
   if (state?.status !== 'running') return state;
   if (typeof state.url !== 'string' || !state.url.trim()) {
-    return { ...state, browser: 'skipped', guidance: 'Browser opening skipped because the dev server has no ready URL.' };
+    return { ...state, browser: 'skipped', browserReason: 'No ready URL was detected.' };
   }
   try {
-    await registerBrowser(cwd);
-    return { ...state, browser: 'registered', guidance: `Use the pi-devloop-chrome browser tools to navigate to ${state.url}.` };
+    const browser = await openBrowser(cwd, state.url);
+    return {
+      ...state,
+      browser: 'opened',
+      browserMode: browser.mode,
+      browserUrl: browser.browserUrl,
+      browserServerName: browser.serverName,
+    };
   } catch (error) {
-    return { ...state, browser: 'error', browserError: error instanceof Error ? error.message : String(error), guidance: `Retry browser registration with browser_connect, then navigate to ${state.url}.` };
+    return {
+      ...state,
+      browser: 'error',
+      browserError: error instanceof Error ? error.message : String(error),
+    };
   }
 }
