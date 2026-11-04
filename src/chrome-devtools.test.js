@@ -56,6 +56,39 @@ test('Chrome MCP is registered only when connect is requested and can be disconn
   assert.equal(changes.at(-1)[0], 'unregister');
 });
 
+test('browser_disconnect retries owned Chrome cleanup after MCP unregistration succeeded', async (t) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'pi-devloop-browser-'));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const servers = [];
+  const changes = [];
+  const pi = {
+    getMcpServers: () => [...servers],
+    registerMcpServer(name, config) { servers.push({ name, config, extensionPath: '/project/src/index.ts' }); },
+    unregisterMcpServer(name) { changes.push(['unregister', name]); servers.splice(0, servers.length, ...servers.filter((server) => server.name !== name)); },
+  };
+  let closeCalls = 0;
+  const launcher = {
+    owned: true,
+    endpoint: 'http://127.0.0.1:43127',
+    async open() { return { browserUrl: this.endpoint, owned: true }; },
+    async close() {
+      closeCalls++;
+      if (closeCalls === 1) throw Object.assign(new Error('ENOTEMPTY'), { code: 'ENOTEMPTY' });
+      return true;
+    },
+  };
+  const integration = createChromeDevTools(pi, launcher);
+  await integration.openReady(cwd, 'http://localhost:3000');
+
+  await assert.rejects(integration.disconnect(), /ENOTEMPTY/);
+  assert.deepEqual(servers, [], 'the owned MCP registration is removed before launcher cleanup');
+  const retry = await integration.disconnect();
+
+  assert.deepEqual(retry, { registered: false, owned: false, serverName: MCP_SERVER_NAME, disconnected: false, browserClosed: true });
+  assert.equal(closeCalls, 2, 'a retry should close only the still-owned Chrome launcher');
+  assert.deepEqual(changes, [['unregister', MCP_SERVER_NAME]]);
+});
+
 test('Chrome MCP attaches to the configured existing browser endpoint', async (t) => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'pi-devloop-browser-'));
   t.after(() => rm(cwd, { recursive: true, force: true }));
@@ -98,13 +131,16 @@ test('Chrome MCP status and disconnect reject a registration replaced by another
     registerMcpServer(name, config) { changes.push(['register', name, config]); servers.push({ name, config, extensionPath: '/project/src/index.ts' }); },
     unregisterMcpServer(name) { changes.push(['unregister', name]); servers.splice(0, servers.length, ...servers.filter((server) => server.name !== name)); },
   };
-  const integration = createChromeDevTools(pi);
+  let closeCalls = 0;
+  const launcher = { owned: true, async close() { closeCalls++; return true; } };
+  const integration = createChromeDevTools(pi, launcher);
   await integration.connect('/tmp/pi-devloop-test');
   servers[0] = { ...servers[0], extensionPath: '/other/extension.ts' };
   assert.deepEqual(integration.status(), { registered: true, owned: false, serverName: MCP_SERVER_NAME, browserUrl: null, mode: 'managed' });
   assert.deepEqual(await integration.disconnect(), { registered: true, owned: false, serverName: MCP_SERVER_NAME, disconnected: false });
   assert.equal(changes.filter(([action]) => action === 'unregister').length, 0);
   assert.equal(servers.length, 1);
+  assert.equal(closeCalls, 0, 'foreign MCP ownership must prevent closing the browser');
 });
 
 test('Chrome MCP endpoint must use http or https and contain no credentials', () => {

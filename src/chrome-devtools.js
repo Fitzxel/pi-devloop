@@ -61,6 +61,10 @@ export function createChromeDevTools(pi, launcher) {
       const owned = isOwned(registered);
       if (!owned) {
         ownedExtensionPath = null;
+        if (!registered && launcher?.owned) {
+          const browserClosed = await launcher.close();
+          return { registered: false, owned: false, serverName: MCP_SERVER_NAME, disconnected: false, ...(browserClosed ? { browserClosed: true } : {}) };
+        }
         return { registered: Boolean(registered), owned: false, serverName: MCP_SERVER_NAME, disconnected: false };
       }
       await pi.unregisterMcpServer(MCP_SERVER_NAME);
