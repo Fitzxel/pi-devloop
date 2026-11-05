@@ -6,7 +6,7 @@ import { createFeedbackServer, createSessionToken } from './server.js';
 import { getDevLogs, readDevState, startDevServer, stopDevServer } from './herdr.js';
 import { getProjectConfig, parseSettingArgs, setProjectConfig } from './project-config.js';
 import { createChromeDevTools } from './chrome-devtools.js';
-import { runDevStart } from './dev-start-automation.js';
+import { registerDevStartCommand, runDevStart } from './dev-start-automation.js';
 import { createChromeLauncher } from './chrome-launcher.js';
 
 type OperationParams = { lines?: number };
@@ -83,8 +83,9 @@ export default function (pi: ExtensionAPI) {
     async execute() { return asToolResult(await browser.disconnect()); },
   });
 
+  registerDevStartCommand(pi, (cwd) => operations.start(cwd), (cwd, url) => browser.openReady(cwd, url));
+
   const commands: Array<{ name: string; description: string; operation: keyof typeof operations; parse?: (args: string) => OperationParams }> = [
-    { name: 'devloop:start', description: 'Start the project dev server in Herdr', operation: 'start' },
     { name: 'devloop:stop', description: 'Stop the project dev server', operation: 'stop' },
     { name: 'devloop:status', description: 'Show project dev server status and recent output', operation: 'status' },
     { name: 'devloop:logs', description: 'Show recent project dev-server logs; optionally pass a line count', operation: 'logs', parse: (args) => {

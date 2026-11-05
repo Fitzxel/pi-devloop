@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { automateDevStart, runDevStart } from './dev-start-automation.js';
+import { automateDevStart, registerDevStartCommand, runDevStart } from './dev-start-automation.js';
 
 test('opens Chrome at a ready URL and returns browser mode and MCP endpoint with server state', async () => {
   let call;
@@ -54,4 +54,29 @@ test('runDevStart starts the server then opens its ready URL through the shared 
     status: 'running', pane_id: 'p1', url: 'http://127.0.0.1:4173', browser: 'opened',
     browserMode: 'managed', browserUrl: 'http://127.0.0.1:43210', browserServerName: 'pi-devloop-chrome',
   });
+});
+
+test('registered /devloop:start opens Chrome after start and notifies the command result', async () => {
+  const events = [];
+  const notifications = [];
+  const commands = [];
+  const pi = { registerCommand: (name, command) => commands.push({ name, ...command }) };
+  registerDevStartCommand(
+    pi,
+    async (cwd) => { events.push(['start', cwd]); return { status: 'running', pane_id: 'p1', url: 'http://127.0.0.1:4173' }; },
+    async (cwd, url) => { events.push(['open', cwd, url]); return { mode: 'managed', browserUrl: 'http://127.0.0.1:43210', serverName: 'pi-devloop-chrome' }; },
+  );
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].name, 'devloop:start');
+  assert.match(commands[0].description, /open the ready URL in Chrome/);
+
+  const ctx = { cwd: '/project', ui: { notify: (message, type) => notifications.push({ message, type }) } };
+  const result = await commands[0].handler('', ctx);
+
+  assert.deepEqual(events, [
+    ['start', '/project'],
+    ['open', '/project', 'http://127.0.0.1:4173'],
+  ]);
+  assert.equal(result.browser, 'opened');
+  assert.deepEqual(notifications, [{ message: JSON.stringify(result, null, 2), type: 'info' }]);
 });

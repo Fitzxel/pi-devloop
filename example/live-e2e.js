@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createChromeDevTools, MCP_SERVER_NAME } from '../src/chrome-devtools.js';
 import { createChromeLauncher } from '../src/chrome-launcher.js';
-import { runDevStart } from '../src/dev-start-automation.js';
+import { registerDevStartCommand } from '../src/dev-start-automation.js';
 import { startDevServer, stopDevServer } from '../src/herdr.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -82,17 +82,26 @@ async function runLiveTest() {
       filter: (source) => !source.endsWith('live-e2e.js') && !source.endsWith('server.test.js'),
     });
 
-    result = await runDevStart(
+    const notifications = [];
+    const commandContext = { cwd: project, ui: { notify: (message, type) => notifications.push({ message, type }) } };
+    const registeredCommands = [];
+    registerDevStartCommand(
+      { registerCommand: (name, command) => registeredCommands.push({ name, ...command }) },
       async (cwd) => {
         serverState = await startDevServer({ cwd, stateFile });
         return serverState;
       },
       (cwd, url) => browser.openReady(cwd, url),
-      project,
     );
+    assert.equal(registeredCommands.length, 1);
+    assert.equal(registeredCommands[0].name, 'devloop:start');
+    result = await registeredCommands[0].handler('', commandContext);
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].type, 'info');
+    assert.match(notifications[0].message, /"browser": "opened"/);
 
-    assert.equal(result.status, 'running', 'dev_start should leave the example server running');
-    assert.equal(result.browser, 'opened', result.browserError ?? 'dev_start should open managed Chrome');
+    assert.equal(result.status, 'running', '/devloop:start should leave the example server running');
+    assert.equal(result.browser, 'opened', result.browserError ?? '/devloop:start should open managed Chrome');
     assert.match(result.url, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
     assert.equal(result.browserMode, 'managed');
 
