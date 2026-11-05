@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { DEVLOOP_EXTENSION_ID } from './extension-identity.js';
 
 const MAX_BODY = 16 * 1024;
 const MAX_TEXT = 4000;
@@ -8,11 +9,14 @@ export function createSessionToken() {
   return randomBytes(32).toString('base64url');
 }
 
-export function createFeedbackServer({ token, onSelection }) {
+export function createFeedbackServer({ token, onSelection, targetOrigin }) {
   if (!token || typeof onSelection !== 'function') throw new TypeError('token and onSelection are required');
+  let currentToken = token;
   const server = createServer(async (req, res) => {
     const send = (status, body) => {
-      res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': req.headers.origin ?? 'null', vary: 'Origin' });
+      const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', vary: 'Origin' };
+      if (validOrigin(req)) headers['access-control-allow-origin'] = req.headers.origin;
+      res.writeHead(status, headers);
       res.end(JSON.stringify(body));
     };
     if (req.method === 'OPTIONS') {
@@ -23,7 +27,7 @@ export function createFeedbackServer({ token, onSelection }) {
     if (req.method !== 'POST' || req.url !== '/selection') return send(404, { error: 'not found' });
     if (!validOrigin(req)) return send(403, { error: 'origin not allowed' });
     const supplied = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';
-    const expected = Buffer.from(token);
+    const expected = Buffer.from(currentToken);
     const actual = Buffer.from(supplied);
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return send(401, { error: 'unauthorized' });
     let raw = '';
@@ -51,17 +55,13 @@ export function createFeedbackServer({ token, onSelection }) {
         });
       });
     },
+    setToken(value) { if (!value) throw new TypeError('token is required'); currentToken = value; },
     close() { return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); },
   };
 }
 
 function validOrigin(req) {
-  const origin = req.headers.origin;
-  if (typeof origin !== 'string') return false;
-  try {
-    const url = new URL(origin);
-    return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && url.protocol === 'http:';
-  } catch { return false; }
+  return req.headers.origin === `chrome-extension://${DEVLOOP_EXTENSION_ID}`;
 }
 
 function isSelection(value) {

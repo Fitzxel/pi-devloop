@@ -1,7 +1,8 @@
 import { spawn as nodeSpawn } from 'node:child_process';
-import { mkdtemp as nodeMkdtemp, readFile as nodeReadFile, rm as nodeRm } from 'node:fs/promises';
+import { mkdtemp as nodeMkdtemp, readFile as nodeReadFile, rm as nodeRm, cp as nodeCp, writeFile as nodeWriteFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const START_TIMEOUT_MS = 10000;
 const STOP_TIMEOUT_MS = 2000;
@@ -11,6 +12,8 @@ export function createChromeLauncher(deps = {}) {
   const spawn = deps.spawn ?? nodeSpawn;
   const mkdtemp = deps.mkdtemp ?? nodeMkdtemp;
   const readFile = deps.readFile ?? nodeReadFile;
+  const cp = deps.cp ?? nodeCp;
+  const writeFile = deps.writeFile ?? nodeWriteFile;
   const rm = deps.rm ?? nodeRm;
   const fetcher = deps.fetch ?? globalThis.fetch;
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -26,7 +29,7 @@ export function createChromeLauncher(deps = {}) {
   };
 
   return {
-    open(url) {
+    open(url, extensionConfig) {
       const targetUrl = validateTargetUrl(url);
       return serialize(async () => {
         if (owned?.endpoint && isRunning(owned.child)) {
@@ -34,7 +37,7 @@ export function createChromeLauncher(deps = {}) {
           return { browserUrl: owned.endpoint, owned: true };
         }
         if (owned) await closeOwned();
-        return launch(targetUrl);
+        return launch(targetUrl, extensionConfig);
       });
     },
 
@@ -55,14 +58,24 @@ export function createChromeLauncher(deps = {}) {
     get endpoint() { return owned?.endpoint ?? null; },
   };
 
-  async function launch(url) {
+  async function launch(url, extensionConfig) {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'pi-devloop-chrome-'));
+    const extensionDirectory = path.join(directory, 'extension');
+    const config = extensionConfig ?? { endpoint: '', token: '', targetOrigin: new URL(url).origin };
+    await cp(deps.extensionDirectory ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../extension'), extensionDirectory, { recursive: true });
+    const manifestPath = path.join(extensionDirectory, 'manifest.json');
+    const manifest = JSON.parse(await nodeReadFile(manifestPath, 'utf8'));
+    manifest.host_permissions = [toMatchPattern(config.targetOrigin)];
+    if (config.endpoint) manifest.host_permissions.push(toMatchPattern(new URL(config.endpoint).origin));
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}${String.fromCharCode(10)}`);
+    await writeFile(path.join(extensionDirectory, 'service-worker.js'), `globalThis.DEVLOOP_CONFIG = ${JSON.stringify(config)};${String.fromCharCode(10)}${await nodeReadFile(path.join(extensionDirectory, 'service-worker.js'), 'utf8')}`);
     const args = [
       '--enable-automation',
       '--no-first-run',
       '--no-default-browser-check',
       `--user-data-dir=${directory}`,
       '--remote-debugging-port=0',
+      `--load-extension=${extensionDirectory}`,
       '--new-window',
       url,
     ];
@@ -158,6 +171,12 @@ function chromeCandidates(platform, env) {
     'chrome.exe',
   ];
   return ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'];
+}
+
+function toMatchPattern(origin) {
+  const url = new URL(origin);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Extension permissions require an exact http or https origin');
+  return `${url.origin}/*`;
 }
 
 function validateTargetUrl(value) {

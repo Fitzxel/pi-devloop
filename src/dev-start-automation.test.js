@@ -1,6 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { automateDevStart, registerDevStartCommand, runDevStart } from './dev-start-automation.js';
+import { automateDevStart, createDevStartManager, registerDevStartCommand, runDevStart } from './dev-start-automation.js';
+
+test('running start is idempotent and stopped start creates a fresh run and extension config', async () => {
+  let starts = 0;
+  let opens = 0;
+  let alive = true;
+  let paneClosures = 0;
+  const manager = createDevStartManager({
+    startServer: async () => ({ status: 'running', url: 'http://localhost:3000', pane_id: `p${++starts}` }),
+    isAlive: async () => alive,
+    stopServer: async () => { paneClosures++; },
+    openBrowser: async (_cwd, _url, config) => { opens++; assert.equal(config.token, `token-${starts}`); return { mode: 'managed', browserUrl: 'http://127.0.0.1:43127' }; },
+    createToken: () => `token-${starts + 1}`,
+  });
+  const first = await manager.start('/project');
+  const repeated = await manager.start('/project');
+  assert.equal(first.status, 'running');
+  assert.equal(repeated.pane_id, first.pane_id);
+  assert.equal(starts, 1);
+  assert.equal(opens, 1);
+  alive = false;
+  const restarted = await manager.start('/project');
+  assert.equal(restarted.pane_id, 'p2');
+  assert.equal(starts, 2);
+  assert.equal(opens, 2);
+  assert.equal(paneClosures, 1);
+});
 
 test('opens Chrome at a ready URL and returns browser mode and MCP endpoint with server state', async () => {
   let call;

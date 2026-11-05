@@ -20,7 +20,7 @@ export function createChromeDevTools(pi, launcher) {
   const isOwned = (server) => Boolean(ownedExtensionPath && server?.extensionPath === ownedExtensionPath);
 
   return {
-    async openReady(cwd, url) {
+    async openReady(cwd, url, extensionConfig) {
       const existing = this.status();
       if (existing.registered && !existing.owned) {
         throw new Error(`MCP server "${MCP_SERVER_NAME}" is registered by another extension; refusing to open the browser.`);
@@ -28,7 +28,7 @@ export function createChromeDevTools(pi, launcher) {
       const { browserUrl } = await getProjectConfig(cwd);
       const opened = browserUrl
         ? await launcher.openConfigured(browserUrl, url)
-        : await launcher.open(url);
+        : await launcher.open(url, extensionConfig);
       try {
         const connected = await registerSerially(cwd, opened.browserUrl);
         if (!opened.owned && launcher?.owned && launcher.endpoint !== opened.browserUrl) await launcher.close();

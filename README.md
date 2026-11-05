@@ -4,7 +4,7 @@ A Pi extension starter for dev-server feedback and browser element selection thr
 
 ## Status
 
-This is an early scaffold. It includes Herdr `dev_start`, `dev_status`, `dev_logs`, and `dev_stop` tools; a loopback feedback receiver; a browser overlay script; and on-demand Chrome DevTools MCP integration. Chrome launch management, source-location mapping, and automatic overlay injection are not implemented yet.
+This package includes Herdr `dev_start`, `dev_status`, `dev_logs`, and `dev_stop` tools; a loopback feedback receiver; an unpacked Manifest V3 feedback extension for devloop-managed Chrome; and on-demand Chrome DevTools MCP integration.
 
 ## Install / load
 
@@ -44,7 +44,7 @@ Commands:
 
 These settings are stored in the current project's `.pi/devloop.json`; no manual file creation is needed. An unset command is detected from `scripts.dev` / `scripts.start` in `package.json`, an unset dev-server URL is parsed from ready output, and timeout defaults to 30000 ms. A configured dev-server URL overrides the URL parsed from startup output; with `browserUrl` unset, Chrome DevTools MCP launches its isolated browser when explicitly requested. Legacy `readyPattern` and `readyTimeoutMs` config values remain supported.
 
-The configured command is submitted to Herdr's shell. Only set it in a project you trust. Runtime state is stored at `.pi/devloop/state.json`; add that file to `.gitignore` if you do not want it tracked. `dev_stop` closes the tab created for a tab layout, or just the pane for a split layout.
+The configured command is submitted to Herdr's shell. Only set it in a project you trust. Devloop keeps its active lifecycle state in memory and does not write `.pi/devloop/state.json` into the project. A repeated start while the foreground process recorded by Herdr `pane process-info` remains present is a no-op; once it disappears, the next start creates fresh feedback credentials and reopens only a devloop-owned Chrome. `dev_stop` closes the tab created for a tab layout, or just the pane for a split layout.
 
 ## Chrome DevTools MCP
 
@@ -65,18 +65,9 @@ Set `/devloop:set browserUrl http://127.0.0.1:9222` (or the endpoint you started
 
 ## Browser feedback receiver
 
-Run `/devloop` in Pi to start the per-session HTTP receiver and show its port and bearer token. It binds only to `127.0.0.1`. The endpoint accepts `POST /selection` with JSON and a same-origin localhost `Origin`. The token is intended for a locally controlled browser page; do not expose it to arbitrary websites. The receiver validates payload lengths before sending a user message to the active Pi session.
+A real dev-server start creates a fresh per-run HTTP receiver and bearer token, binds only to `127.0.0.1`, and passes its endpoint, token, and exact dev-server origin only into a private temporary copy of the extension for managed Chrome. A repeated start while running does not rotate credentials. Run `/devloop` in Pi to start a standalone per-session receiver and show its port and bearer token. It binds only to `127.0.0.1`. The endpoint accepts `POST /selection` with validated JSON only from the pinned devloop extension origin and requires its current bearer token; the service worker only submits for the exact configured dev-server origin. The token is intended for the private extension copy and is not exposed to page JavaScript. The receiver validates payload lengths before sending a user message to the active Pi session.
 
-`overlay/devloop.js` is a standalone starter script. Before loading it, set:
-
-```js
-window.__PI_DEVLOOP__ = {
-  endpoint: 'http://127.0.0.1:PORT/selection',
-  token: 'TOKEN_SHOWN_BY_/devloop'
-};
-```
-
-Then evaluate the script in the target page. It highlights elements, opens a small instruction form on click, and submits a bounded description. Do not inject it into pages that should not receive prompts or expose sensitive page data.
+The feedback overlay is the unpacked Manifest V3 extension in `extension/`. Devloop-managed Chrome loads a private temporary copy at launch with host permissions limited to the exact target and loopback receiver origins (including ports); it does not declare automatic content scripts. The extension toolbar action explicitly activates selection, highlights hovered elements, and submits the bounded selection payload from its service worker. The bearer token is not placed in page JavaScript. The content script is injected only into the tab selected through the extension action. Configured external browsers are not modified or assumed to have the extension installed. The old `overlay/devloop.js` entry is deprecated and inert.
 
 ## Development
 

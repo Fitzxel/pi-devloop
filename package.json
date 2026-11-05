@@ -4,7 +4,7 @@
   "description": "Pi extension for managing Herdr dev servers and browser feedback",
   "type": "module",
   "license": "MIT",
-  "files": ["src", "overlay", "example", "README.md"],
+  "files": ["src", "extension", "example", "README.md"],
   "scripts": {
     "start": "node example/server.js",
     "test": "node --test",

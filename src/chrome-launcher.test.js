@@ -23,18 +23,28 @@ test('launches an isolated Chrome at the ready URL and closes only its owned chi
     env: { CHROME_PATH: '/opt/mock/chrome' },
     mkdtemp: async (prefix) => { calls.push(['mkdtemp', prefix]); return '/tmp/pi-devloop-owned'; },
     readFile: async (file) => { assert.equal(file, '/tmp/pi-devloop-owned/DevToolsActivePort'); return '43127\n/devtools/browser/test'; },
+    writeFile: async (file, content) => calls.push(['writeFile', file, content]),
     rm: async (...args) => calls.push(['rm', ...args]),
     spawn: (command, args, options) => { calls.push(['spawn', command, args, options]); return makeChild((signal) => calls.push(['kill', signal])); },
     fetch: async (url) => { calls.push(['fetch', String(url)]); return { ok: true }; },
     sleep: async () => {},
   });
 
-  const result = await chrome.open('http://localhost:3000');
+  const result = await chrome.open('http://localhost:3000', { endpoint: 'http://127.0.0.1:43200/selection', token: 'fresh-secret', targetOrigin: 'http://localhost:3000' });
   assert.deepEqual(result, { browserUrl: 'http://127.0.0.1:43127', owned: true });
   const spawnCall = calls.find(([kind]) => kind === 'spawn');
   assert.equal(spawnCall[1], '/opt/mock/chrome');
   assert(spawnCall[2].includes('--enable-automation'));
   assert(spawnCall[2].includes('--remote-debugging-port=0'));
+  assert(spawnCall[2].some((arg) => arg.startsWith('--load-extension=')));
+  const workerConfig = calls.find(([kind, file]) => kind === 'writeFile' && file.endsWith('service-worker.js'));
+  const manifestConfig = calls.find(([kind, file]) => kind === 'writeFile' && file.endsWith('manifest.json'));
+  const manifest = JSON.parse(manifestConfig[2]);
+  assert.deepEqual(manifest.host_permissions, ['http://localhost:3000/*', 'http://127.0.0.1:43200/*']);
+  assert.equal(manifest.content_scripts, undefined, 'selection remains explicitly activated from the toolbar');
+  assert.match(workerConfig[2], /fresh-secret/);
+  assert(workerConfig[2].includes('http://localhost:3000'));
+  assert(!workerConfig[2].includes('window.__PI_DEVLOOP__'));
   assert(spawnCall[2].includes('--user-data-dir=/tmp/pi-devloop-owned'));
   assert.equal(spawnCall[2].at(-1), 'http://localhost:3000');
   assert(calls.some(([kind, url]) => kind === 'fetch' && url === 'http://127.0.0.1:43127/json/version'));
@@ -43,6 +53,16 @@ test('launches an isolated Chrome at the ready URL and closes only its owned chi
   assert(calls.some(([kind, signal]) => kind === 'kill' && signal === 'SIGTERM'));
   assert(calls.some(([kind, directory, options]) => kind === 'rm' && directory === '/tmp/pi-devloop-owned' && options.recursive && options.force));
   assert.equal(await chrome.close(), false);
+});
+
+test('does not install an extension into a configured external browser', async () => {
+  const calls = [];
+  const chrome = createChromeLauncher({
+    spawn: () => { calls.push(['spawn']); throw new Error('must not launch'); },
+    fetch: async () => ({ ok: true }),
+  });
+  await chrome.openConfigured('http://127.0.0.1:9222', 'http://localhost:3000');
+  assert.deepEqual(calls, []);
 });
 
 test('opens a new tab in configured Chrome without launching or closing it', async () => {

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Pi Devloop Feedback",
+  "version": "1.0.0",
+  "description": "Select page elements and send feedback to Pi devloop.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkTuFYoJUlLeFkf044tqMAimYImz1Pj/5HY4q+0dGDi2lTsRvYrMpUEwew0Vy6h2HHI9FVSLNnuBBhmsgmAzPiCd9MgwqEGjXSby9OZxW2vIsxcZPXntuDTBdBL3hlo0gadsm2mC8V1CEp4djAiipYRlxMsZq2AWddu2AmA2tq6ub2LAfj1uteAMU8aDi5hvk9+3M7Ls4tGL/+lU4jjdJjCg8LijoznICw7aU1CJ+anTFS7XIpaJjwgSj2QmEaM1z2z5f/CpszUg9962YfV+slpKtwltV1VT00/p+ZGsdncCuN5RHWX8/VvdhrjucKLXK7pikwYl1g/eWZc/Vu8rwFQIDAQAB",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "Select page element for Pi devloop" }
+}

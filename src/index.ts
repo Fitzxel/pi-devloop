@@ -1,31 +1,30 @@
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
 import { createFeedbackServer, createSessionToken } from './server.js';
-import { getDevLogs, readDevState, startDevServer, stopDevServer } from './herdr.js';
+import { buildPaneCloseCommand, getDevLogs, getDevProcessInfo, isDevProcessAlive, runHerdr, startDevServer } from './herdr.js';
 import { getProjectConfig, parseSettingArgs, setProjectConfig } from './project-config.js';
 import { createChromeDevTools } from './chrome-devtools.js';
-import { registerDevStartCommand, runDevStart } from './dev-start-automation.js';
+import { createDevStartManager, registerDevStartCommand } from './dev-start-automation.js';
 import { createChromeLauncher } from './chrome-launcher.js';
 
 type OperationParams = { lines?: number };
 type Operation = (cwd: string, params?: OperationParams) => Promise<unknown>;
 
-function createOperations(): Record<string, Operation> {
+function createOperations(getState: (cwd: string) => Promise<any>, stopState: (cwd: string) => Promise<unknown>): Record<string, Operation> {
   return {
-    start: async (cwd) => startDevServer({ cwd, stateFile: path.join(cwd, '.pi/devloop/state.json') }),
+    start: async (cwd) => getState(cwd),
     status: async (cwd) => {
-      const state = await readDevState(path.join(cwd, '.pi/devloop/state.json'));
-      if (!state || state.status !== 'running') return state ?? { status: 'stopped' };
+      const state = await getState(cwd);
+      if (state.status !== 'running') return state;
       return { ...state, logs: await getDevLogs(state, { cwd, lines: 40 }) };
     },
     logs: async (cwd, params) => {
-      const state = await readDevState(path.join(cwd, '.pi/devloop/state.json'));
-      if (!state || state.status !== 'running') return { status: 'stopped' };
+      const state = await getState(cwd);
+      if (state.status !== 'running') return { status: 'stopped' };
       return { pane_id: state.pane_id, logs: await getDevLogs(state, { cwd, lines: params?.lines ?? 80 }) };
     },
-    stop: async (cwd) => stopDevServer(path.join(cwd, '.pi/devloop/state.json'), { cwd }),
+    stop: async (cwd) => stopState(cwd),
   };
 }
 
@@ -46,13 +45,33 @@ export default function (pi: ExtensionAPI) {
   let feedbackServer: ReturnType<typeof createFeedbackServer> | undefined;
   let feedbackToken: string | undefined;
   let feedbackPort: number | undefined;
-  const operations = createOperations();
+  let feedbackOnSelection: ((selection: unknown) => void) | undefined;
   const launcher = createChromeLauncher();
   const browser = createChromeDevTools(pi, launcher);
+  const manager = createDevStartManager({
+    createToken: createSessionToken,
+    isAlive: async (state: any, cwd: string) => { try { return isDevProcessAlive(state, await getDevProcessInfo(state, { cwd })); } catch { return false; } },
+    closeBrowser: async () => { await browser.disconnect(); if (feedbackServer) { await feedbackServer.close(); feedbackServer = undefined; } feedbackToken = undefined; feedbackPort = undefined; },
+    stopServer: async (state: any, cwd: string) => { try { await runHerdr(buildPaneCloseCommand(state), { cwd }); } catch { /* pane may already have exited */ } },
+    openBrowser: (cwd: string, url: string, config: any) => browser.openReady(cwd, url, config),
+    startServer: async (cwd: string, token: string) => {
+      if (feedbackServer) await feedbackServer.close();
+      feedbackToken = token;
+      feedbackServer = createFeedbackServer({ token, onSelection: (selection) => feedbackOnSelection?.(selection) });
+      const address = await feedbackServer.listen();
+      feedbackPort = address.port;
+      try {
+        const state = await startDevServer({ cwd, persist: false });
+        feedbackOnSelection = (selection) => pi.sendUserMessage(`Browser selection:\n${JSON.stringify(selection, null, 2)}`, { triggerTurn: true });
+        return { ...state, feedback: { token, endpoint: `http://127.0.0.1:${address.port}/selection`, targetOrigin: new URL(state.url).origin } };
+      } catch (error) { await feedbackServer.close(); feedbackServer = undefined; throw error; }
+    },
+  });
+  const operations = createOperations((cwd) => manager.status(cwd), (cwd) => manager.stop(cwd));
 
   const tools = [
     { name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server and wait for readiness. When a ready URL is available, open it in Chrome and attach pi-devloop-chrome to that same browser automatically.', operation: 'start', parameters: Type.Object({}) },
-    { name: 'dev_status', label: 'Dev server status', description: 'Read the saved dev server state and current Herdr pane output.', operation: 'status', parameters: Type.Object({}) },
+    { name: 'dev_status', label: 'Dev server status', description: 'Read in-memory dev server state, Herdr foreground-process status, and current pane output.', operation: 'status', parameters: Type.Object({}) },
     { name: 'dev_logs', label: 'Read dev server logs', description: 'Read recent output from the Herdr dev-server pane.', operation: 'logs', parameters: Type.Object({ lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })) }) },
     { name: 'dev_stop', label: 'Stop dev server', description: 'Close the Herdr pane created for the dev server.', operation: 'stop', parameters: Type.Object({}) },
   ] as const;
@@ -61,7 +80,7 @@ export default function (pi: ExtensionAPI) {
       name: tool.name, label: tool.label, description: tool.description, parameters: tool.parameters,
       async execute(_id, params, _signal, _onUpdate, ctx) {
         const result = tool.operation === 'start'
-          ? await runDevStart((cwd) => operations.start(cwd), (cwd, url) => browser.openReady(cwd, url), ctx.cwd)
+          ? await manager.start(ctx.cwd)
           : await operations[tool.operation](ctx.cwd, params as OperationParams);
         return asToolResult(result);
       },
@@ -83,7 +102,7 @@ export default function (pi: ExtensionAPI) {
     async execute() { return asToolResult(await browser.disconnect()); },
   });
 
-  registerDevStartCommand(pi, (cwd) => operations.start(cwd), (cwd, url) => browser.openReady(cwd, url));
+  registerDevStartCommand(pi, (cwd) => manager.start(cwd), (cwd, url, config) => browser.openReady(cwd, url, config));
 
   const commands: Array<{ name: string; description: string; operation: keyof typeof operations; parse?: (args: string) => OperationParams }> = [
     { name: 'devloop:stop', description: 'Stop the project dev server', operation: 'stop' },
@@ -159,17 +178,13 @@ export default function (pi: ExtensionAPI) {
         } });
         const address = await feedbackServer.listen();
         feedbackPort = address.port;
-        const stateFile = path.join(ctx.cwd, '.pi/devloop/state.json');
-        await mkdir(path.dirname(stateFile), { recursive: true });
-        const state = await readDevState(stateFile) ?? { status: 'stopped' };
-        await writeFile(stateFile, `${JSON.stringify({ ...state, feedback: { host: '127.0.0.1', port: feedbackPort } }, null, 2)}\n`, { mode: 0o600 });
       }
       ctx.ui.notify(`Feedback endpoint: http://127.0.0.1:${feedbackPort} (token: ${feedbackToken})`, 'info');
     },
   });
   pi.on('before_agent_start', async (_event, ctx) => {
     try {
-      const state = await readDevState(path.join(ctx.cwd, '.pi/devloop/state.json'));
+      const state = await manager.status(ctx.cwd);
       if (!state?.status || state.status === 'stopped') return;
       return { message: { customType: 'devloop-status', content: `dev server: ${state.status}${state.url ? ` at ${state.url}` : ''}${feedbackPort ? `; feedback endpoint at 127.0.0.1:${feedbackPort}` : ''}`, display: false } };
     } catch { /* status context is best-effort */ }
