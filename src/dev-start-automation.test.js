@@ -106,3 +106,24 @@ test('registered /devloop:start opens Chrome after start and notifies the comman
   assert.equal(result.browser, 'opened');
   assert.deepEqual(notifications, [{ message: JSON.stringify(result, null, 2), type: 'info' }]);
 });
+
+test('registered /devloop:start preserves a manager result without opening Chrome twice', async () => {
+  let opens = 0;
+  const commands = [];
+  const notifications = [];
+  const manager = createDevStartManager({
+    startServer: async () => ({ status: 'running', pane_id: 'p1', url: 'http://127.0.0.1:4173' }),
+    openBrowser: async () => { opens++; return { mode: 'managed', browserUrl: 'http://127.0.0.1:43210' }; },
+    createToken: () => 'token-1',
+  });
+  const pi = { registerCommand: (name, command) => commands.push({ name, ...command }) };
+  registerDevStartCommand(pi, (cwd) => manager.start(cwd));
+  const ctx = { cwd: '/project', ui: { notify: (message, type) => notifications.push({ message, type }) } };
+
+  const result = await commands[0].handler('', ctx);
+
+  assert.equal(opens, 1);
+  assert.equal(result.browser, 'opened');
+  assert.equal(result.browserUrl, 'http://127.0.0.1:43210');
+  assert.deepEqual(notifications, [{ message: JSON.stringify(result, null, 2), type: 'info' }]);
+});

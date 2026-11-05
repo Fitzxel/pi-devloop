@@ -102,7 +102,7 @@ export default function (pi: ExtensionAPI) {
     async execute() { return asToolResult(await browser.disconnect()); },
   });
 
-  registerDevStartCommand(pi, (cwd) => manager.start(cwd), (cwd, url, config) => browser.openReady(cwd, url, config));
+  registerDevStartCommand(pi, (cwd) => manager.start(cwd));
 
   const commands: Array<{ name: string; description: string; operation: keyof typeof operations; parse?: (args: string) => OperationParams }> = [
     { name: 'devloop:stop', description: 'Stop the project dev server', operation: 'stop' },

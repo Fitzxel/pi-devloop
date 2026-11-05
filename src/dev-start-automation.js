@@ -45,7 +45,7 @@ export function createDevStartManager({ startServer, isAlive = async () => false
 
 export async function runDevStartCommand(ctx, startServer, openBrowser) {
   try {
-    const result = await runDevStart(startServer, openBrowser, ctx.cwd);
+    const result = openBrowser ? await runDevStart(startServer, openBrowser, ctx.cwd) : await startServer(ctx.cwd);
     ctx.ui.notify(JSON.stringify(result, null, 2), 'info');
     return result;
   } catch (error) {
