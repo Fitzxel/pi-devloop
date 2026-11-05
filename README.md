@@ -6,6 +6,16 @@ A Pi extension starter for dev-server feedback and browser element selection thr
 
 This package includes Herdr `dev_start`, `dev_status`, `dev_logs`, and `dev_stop` tools; a loopback feedback receiver; an unpacked Manifest V3 feedback extension for devloop-managed Chrome; and on-demand Chrome DevTools MCP integration. Its Pi status bar reports the observed dev-server lifecycle as `running` or `stopped` and the Chrome DevTools MCP registration as `connected` or `disconnected`. The server indicator does not claim that startup configuration is valid or that the server is ready to start; the MCP indicator reflects registration, not Chrome process health.
 
+## Requirements
+
+- **Pi** with this package loaded as an extension.
+- **Herdr** installed and available on `PATH`; run Pi inside a Herdr-managed pane (`HERDR_ENV=1`) to start, inspect, or stop dev servers.
+- **Node.js 20 or newer** for the package runtime.
+
+For managed browser launch, devloop automatically uses a compatible Chrome for Testing Stable build. On first use it needs network access to Google's official release metadata and download hosts; Linux and macOS also need `unzip`, while Windows uses PowerShell. Set `PI_DEVLOOP_CHROME_PATH` to a compatible Chrome/Chromium executable to bypass Chrome for Testing resolution and download. Alternatively, configure `browserUrl` to attach to an existing debuggable Chrome endpoint instead of launching a managed browser.
+
+The Chrome DevTools MCP package is fetched with `npx -y chrome-devtools-mcp@latest` when the MCP is registered; first use therefore needs `npx` and, unless the package is already cached, network access to npm. These browser and MCP requirements are conditional: starting and controlling the dev server requires Pi and Herdr, while browser integration requires a browser and the corresponding launch or attach setup.
+
 ## Install / load
 
 The extension entry point is `src/index.ts`; its package manifest declares it under `pi.extensions`. In a Pi project, load this package from a trusted source or test locally with `pi -e ./src/index.ts`.
