@@ -68,6 +68,15 @@ export default function (pi: ExtensionAPI) {
     },
   });
   const operations = createOperations((cwd) => manager.status(cwd), (cwd) => manager.stop(cwd));
+  const updateIntegrationStatus = async (ctx: ExtensionContext) => {
+    if (!ctx.hasUI) return;
+    const state = await manager.status(ctx.cwd);
+    const running = state?.status === 'running';
+    const theme = ctx.ui.theme;
+    ctx.ui.setStatus('pi-devloop-server', theme.fg(running ? 'success' : 'dim', `devloop server: ${running ? 'running' : 'stopped'}`));
+    const connected = browser.status().registered;
+    ctx.ui.setStatus('pi-devloop-mcp', theme.fg(connected ? 'success' : 'dim', `devloop MCP: ${connected ? 'connected' : 'disconnected'}`));
+  };
 
   const tools = [
     { name: 'dev_start', label: 'Start dev server', description: 'Start the configured project dev server and wait for readiness. When a ready URL is available, open it in Chrome and attach pi-devloop-chrome to that same browser automatically.', operation: 'start', parameters: Type.Object({}) },
@@ -82,6 +91,7 @@ export default function (pi: ExtensionAPI) {
         const result = tool.operation === 'start'
           ? await manager.start(ctx.cwd)
           : await operations[tool.operation](ctx.cwd, params as OperationParams);
+        await updateIntegrationStatus(ctx);
         return asToolResult(result);
       },
     });
@@ -89,7 +99,11 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: 'browser_connect', label: 'Connect Chrome DevTools', description: 'On demand, register Chrome DevTools MCP. Without an extension-launched Chrome, managed mode launches an isolated profile on the first browser-tool call; attach mode uses configured browserUrl. Use its MCP tools for navigation and inspection.',
     parameters: Type.Object({}),
-    async execute(_id, _params, _signal, _onUpdate, ctx) { return asToolResult(await browser.connect(ctx.cwd)); },
+    async execute(_id, _params, _signal, _onUpdate, ctx) {
+      const result = await browser.connect(ctx.cwd);
+      await updateIntegrationStatus(ctx);
+      return asToolResult(result);
+    },
   });
   pi.registerTool({
     name: 'browser_status', label: 'Chrome MCP status', description: 'Report whether Chrome DevTools MCP is registered in managed or attach mode; a dev_start-launched managed window is already open, while manual MCP registration may still be lazy.',
@@ -99,10 +113,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: 'browser_disconnect', label: 'Disconnect Chrome DevTools', description: 'Unregister Chrome DevTools MCP. This closes only a Chrome window launched by devloop; a configured existing browser remains open.',
     parameters: Type.Object({}),
-    async execute() { return asToolResult(await browser.disconnect()); },
+    async execute(_id, _params, _signal, _onUpdate, ctx) {
+      const result = await browser.disconnect();
+      await updateIntegrationStatus(ctx);
+      return asToolResult(result);
+    },
   });
 
-  registerDevStartCommand(pi, (cwd) => manager.start(cwd));
+  registerDevStartCommand(pi, (cwd) => manager.start(cwd), undefined, updateIntegrationStatus);
 
   const commands: Array<{ name: string; description: string; operation: keyof typeof operations; parse?: (args: string) => OperationParams }> = [
     { name: 'devloop:stop', description: 'Stop the project dev server', operation: 'stop' },
@@ -120,6 +138,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const params = command.parse?.(args) ?? {};
           await runCommand(ctx, operations[command.operation], params);
+          await updateIntegrationStatus(ctx);
         } catch (error) {
           ctx.ui.notify(`devloop: ${error instanceof Error ? error.message : String(error)}`, 'error');
         }
@@ -132,6 +151,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       try {
         const state = await browser.connect(ctx.cwd);
+        await updateIntegrationStatus(ctx);
         const target = state.mode === 'managed' && state.browserUrl
           ? `the devloop-managed Chrome window is already open at ${state.browserUrl}`
           : state.mode === 'managed'
@@ -143,11 +163,18 @@ export default function (pi: ExtensionAPI) {
   });
   pi.registerCommand('devloop:browser-status', {
     description: 'Show whether Chrome DevTools MCP is registered and its managed or attach mode',
-    handler: async (_args, ctx) => ctx.ui.notify(JSON.stringify(browser.status(), null, 2), 'info'),
+    handler: async (_args, ctx) => {
+      await updateIntegrationStatus(ctx);
+      ctx.ui.notify(JSON.stringify(browser.status(), null, 2), 'info');
+    },
   });
   pi.registerCommand('devloop:browser-stop', {
     description: 'Disconnect Chrome DevTools MCP; closes only a devloop-launched Chrome and leaves a configured existing browser open',
-    handler: async (_args, ctx) => ctx.ui.notify(JSON.stringify(await browser.disconnect(), null, 2), 'info'),
+    handler: async (_args, ctx) => {
+      const result = await browser.disconnect();
+      await updateIntegrationStatus(ctx);
+      ctx.ui.notify(JSON.stringify(result, null, 2), 'info');
+    },
   });
 
   pi.registerCommand('devloop:config', {
@@ -182,9 +209,13 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`Feedback endpoint: http://127.0.0.1:${feedbackPort} (token: ${feedbackToken})`, 'info');
     },
   });
+  pi.on('session_start', async (_event, ctx) => {
+    try { await updateIntegrationStatus(ctx); } catch { /* status context is best-effort */ }
+  });
   pi.on('before_agent_start', async (_event, ctx) => {
     try {
       const state = await manager.status(ctx.cwd);
+      await updateIntegrationStatus(ctx);
       if (!state?.status || state.status === 'stopped') return;
       return { message: { customType: 'devloop-status', content: `dev server: ${state.status}${state.url ? ` at ${state.url}` : ''}${feedbackPort ? `; feedback endpoint at 127.0.0.1:${feedbackPort}` : ''}`, display: false } };
     } catch { /* status context is best-effort */ }

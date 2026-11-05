@@ -87,10 +87,12 @@ test('registered /devloop:start opens Chrome after start and notifies the comman
   const notifications = [];
   const commands = [];
   const pi = { registerCommand: (name, command) => commands.push({ name, ...command }) };
+  let statusRefreshes = 0;
   registerDevStartCommand(
     pi,
     async (cwd) => { events.push(['start', cwd]); return { status: 'running', pane_id: 'p1', url: 'http://127.0.0.1:4173' }; },
     async (cwd, url) => { events.push(['open', cwd, url]); return { mode: 'managed', browserUrl: 'http://127.0.0.1:43210', serverName: 'pi-devloop-chrome' }; },
+    async (ctx) => { statusRefreshes++; assert.equal(ctx.cwd, '/project'); },
   );
   assert.equal(commands.length, 1);
   assert.equal(commands[0].name, 'devloop:start');
@@ -104,6 +106,7 @@ test('registered /devloop:start opens Chrome after start and notifies the comman
     ['open', '/project', 'http://127.0.0.1:4173'],
   ]);
   assert.equal(result.browser, 'opened');
+  assert.equal(statusRefreshes, 1);
   assert.deepEqual(notifications, [{ message: JSON.stringify(result, null, 2), type: 'info' }]);
 });
 

@@ -4,7 +4,7 @@ A Pi extension starter for dev-server feedback and browser element selection thr
 
 ## Status
 
-This package includes Herdr `dev_start`, `dev_status`, `dev_logs`, and `dev_stop` tools; a loopback feedback receiver; an unpacked Manifest V3 feedback extension for devloop-managed Chrome; and on-demand Chrome DevTools MCP integration.
+This package includes Herdr `dev_start`, `dev_status`, `dev_logs`, and `dev_stop` tools; a loopback feedback receiver; an unpacked Manifest V3 feedback extension for devloop-managed Chrome; and on-demand Chrome DevTools MCP integration. Its Pi status bar reports the observed dev-server lifecycle as `running` or `stopped` and the Chrome DevTools MCP registration as `connected` or `disconnected`. The server indicator does not claim that startup configuration is valid or that the server is ready to start; the MCP indicator reflects registration, not Chrome process health.
 
 ## Install / load
 

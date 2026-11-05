@@ -43,9 +43,10 @@ export function createDevStartManager({ startServer, isAlive = async () => false
   return { start, status, stop };
 }
 
-export async function runDevStartCommand(ctx, startServer, openBrowser) {
+export async function runDevStartCommand(ctx, startServer, openBrowser, afterStart) {
   try {
     const result = openBrowser ? await runDevStart(startServer, openBrowser, ctx.cwd) : await startServer(ctx.cwd);
+    await afterStart?.(ctx);
     ctx.ui.notify(JSON.stringify(result, null, 2), 'info');
     return result;
   } catch (error) {
@@ -53,10 +54,10 @@ export async function runDevStartCommand(ctx, startServer, openBrowser) {
   }
 }
 
-export function registerDevStartCommand(pi, startServer, openBrowser) {
+export function registerDevStartCommand(pi, startServer, openBrowser, afterStart) {
   pi.registerCommand('devloop:start', {
     description: 'Start the project dev server in Herdr, wait for readiness, and open the ready URL in Chrome',
-    handler: async (_args, ctx) => runDevStartCommand(ctx, startServer, openBrowser),
+    handler: async (_args, ctx) => runDevStartCommand(ctx, startServer, openBrowser, afterStart),
   });
 }
 
