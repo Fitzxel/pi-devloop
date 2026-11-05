@@ -6,7 +6,7 @@ import { createFeedbackServer, createSessionToken } from './server.js';
 import { getDevLogs, readDevState, startDevServer, stopDevServer } from './herdr.js';
 import { getProjectConfig, parseSettingArgs, setProjectConfig } from './project-config.js';
 import { createChromeDevTools } from './chrome-devtools.js';
-import { automateDevStart } from './dev-start-automation.js';
+import { runDevStart } from './dev-start-automation.js';
 import { createChromeLauncher } from './chrome-launcher.js';
 
 type OperationParams = { lines?: number };
@@ -60,10 +60,10 @@ export default function (pi: ExtensionAPI) {
     pi.registerTool({
       name: tool.name, label: tool.label, description: tool.description, parameters: tool.parameters,
       async execute(_id, params, _signal, _onUpdate, ctx) {
-        const result = await operations[tool.operation](ctx.cwd, params as OperationParams);
-        return asToolResult(tool.operation === 'start'
-          ? await automateDevStart(result as Record<string, unknown>, (cwd, url) => browser.openReady(cwd, url), ctx.cwd)
-          : result);
+        const result = tool.operation === 'start'
+          ? await runDevStart((cwd) => operations.start(cwd), (cwd, url) => browser.openReady(cwd, url), ctx.cwd)
+          : await operations[tool.operation](ctx.cwd, params as OperationParams);
+        return asToolResult(result);
       },
     });
   }

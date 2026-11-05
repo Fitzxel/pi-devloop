@@ -16,6 +16,18 @@ The extension relies on the host-provided `@earendil-works/pi-coding-agent` and 
 
 From the repository root, `npm start` serves `example/index.html` on an ephemeral loopback port and prints an HTTP ready URL. `dev_start` can use this package script as its default command, making the repository a self-contained smoke-test project.
 
+## Live dev_start smoke test
+
+From a Herdr-managed pane (`HERDR_ENV=1`), run:
+
+```sh
+npm run test:e2e
+```
+
+The opt-in runner copies the package and example into a temporary project, invokes the same shared orchestration used by the `dev_start` tool, creates a Herdr tab that runs `npm start`, waits for its ready URL, opens a managed Chrome window, and verifies the Chrome target and served page before cleaning up the tab, browser, and temporary project. It requires Herdr and an installed Chrome executable; set `CHROME_PATH` if Chrome is not on the standard path. It does not require an LLM or network package download. The runner uses a test Pi host stub to assert the native MCP registration name/config and does **not** launch the Chrome DevTools MCP process, so it does not verify live MCP tool exposure.
+
+Installing or reloading the extension alone does not start a project or open Chrome. The automatic browser flow begins when an agent invokes `dev_start`; `/devloop:start` remains a direct server command and does not open Chrome.
+
 ## Herdr dev server
 
 Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). The extension exposes both agent tools (`dev_start`, `dev_status`, `dev_logs`, `dev_stop`) and Pi commands. When the agent invokes `dev_start` and readiness returns a URL, the extension automatically registers Chrome DevTools MCP and directs the agent to use the `pi-devloop-chrome` browser tools to navigate to that exact URL. This automation applies only to the agent tool; `/devloop:start` and `/devloop:browser` retain their existing behavior. Missing URLs skip browser registration, and registration errors preserve the running server state and provide a retry path.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { automateDevStart } from './dev-start-automation.js';
+import { automateDevStart, runDevStart } from './dev-start-automation.js';
 
 test('opens Chrome at a ready URL and returns browser mode and MCP endpoint with server state', async () => {
   let call;
@@ -37,4 +37,21 @@ test('does not open a browser for a non-running server result', async () => {
   const state = { status: 'stopped' };
   assert.equal(await automateDevStart(state, async () => { called = true; }, '/project'), state);
   assert.equal(called, false);
+});
+
+test('runDevStart starts the server then opens its ready URL through the shared tool flow', async () => {
+  const events = [];
+  const result = await runDevStart(
+    async (cwd) => { events.push(['start', cwd]); return { status: 'running', pane_id: 'p1', url: 'http://127.0.0.1:4173' }; },
+    async (cwd, url) => { events.push(['open', cwd, url]); return { mode: 'managed', browserUrl: 'http://127.0.0.1:43210', serverName: 'pi-devloop-chrome' }; },
+    '/project',
+  );
+  assert.deepEqual(events, [
+    ['start', '/project'],
+    ['open', '/project', 'http://127.0.0.1:4173'],
+  ]);
+  assert.deepEqual(result, {
+    status: 'running', pane_id: 'p1', url: 'http://127.0.0.1:4173', browser: 'opened',
+    browserMode: 'managed', browserUrl: 'http://127.0.0.1:43210', browserServerName: 'pi-devloop-chrome',
+  });
 });

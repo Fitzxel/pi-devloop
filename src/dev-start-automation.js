@@ -1,3 +1,8 @@
+export async function runDevStart(startServer, openBrowser, cwd) {
+  const state = await startServer(cwd);
+  return automateDevStart(state, openBrowser, cwd);
+}
+
 export async function automateDevStart(state, openBrowser, cwd) {
   if (state?.status !== 'running') return state;
   if (typeof state.url !== 'string' || !state.url.trim()) {

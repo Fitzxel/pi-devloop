@@ -10,6 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 test('package start script launches and includes the example server', async () => {
   const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   assert.equal(pkg.scripts.start, 'node example/server.js');
+  assert.equal(pkg.scripts['test:e2e'], 'node example/live-e2e.js');
   assert.ok(pkg.files.includes('example'));
 });
 
