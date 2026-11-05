@@ -12,6 +12,10 @@ The extension entry point is `src/index.ts`; its package manifest declares it un
 
 The extension relies on the host-provided `@earendil-works/pi-coding-agent` and `typebox` imports. It has no external runtime dependencies.
 
+## Included example
+
+From the repository root, `npm start` serves `example/index.html` on an ephemeral loopback port and prints an HTTP ready URL. `dev_start` can use this package script as its default command, making the repository a self-contained smoke-test project.
+
 ## Herdr dev server
 
 Run Pi inside a Herdr-managed pane (`HERDR_ENV=1`). The extension exposes both agent tools (`dev_start`, `dev_status`, `dev_logs`, `dev_stop`) and Pi commands. When the agent invokes `dev_start` and readiness returns a URL, the extension automatically registers Chrome DevTools MCP and directs the agent to use the `pi-devloop-chrome` browser tools to navigate to that exact URL. This automation applies only to the agent tool; `/devloop:start` and `/devloop:browser` retain their existing behavior. Missing URLs skip browser registration, and registration errors preserve the running server state and provide a retry path.
