@@ -3,6 +3,7 @@ import { mkdtemp as nodeMkdtemp, readFile as nodeReadFile, rm as nodeRm, cp as n
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createChromeForTestingResolver } from './chrome-for-testing.js';
 
 const START_TIMEOUT_MS = 10000;
 const STOP_TIMEOUT_MS = 2000;
@@ -20,6 +21,13 @@ export function createChromeLauncher(deps = {}) {
   const now = deps.now ?? Date.now;
   const env = deps.env ?? process.env;
   const platform = deps.platform ?? process.platform;
+  const resolveChromeForTesting = deps.resolveChromeForTesting ?? createChromeForTestingResolver({
+    platform,
+    arch: deps.arch ?? process.arch,
+    env,
+    cacheDirectory: deps.chromeForTestingCacheDirectory,
+    fetch: deps.fetch,
+  });
   let owned;
   let operation = Promise.resolve();
   const serialize = (action) => {
@@ -59,6 +67,9 @@ export function createChromeLauncher(deps = {}) {
   };
 
   async function launch(url, extensionConfig) {
+    const executable = typeof env.PI_DEVLOOP_CHROME_PATH === 'string' && env.PI_DEVLOOP_CHROME_PATH.trim()
+      ? env.PI_DEVLOOP_CHROME_PATH
+      : await resolveChromeForTesting();
     const directory = await mkdtemp(path.join(os.tmpdir(), 'pi-devloop-chrome-'));
     const extensionDirectory = path.join(directory, 'extension');
     const config = extensionConfig ?? { endpoint: '', token: '', targetOrigin: new URL(url).origin };
@@ -79,26 +90,15 @@ export function createChromeLauncher(deps = {}) {
       '--new-window',
       url,
     ];
-    let lastError;
-    let started = false;
-
     try {
-      for (const executable of chromeCandidates(platform, env)) {
-        let child;
-        try {
-          child = spawn(executable, args, { stdio: 'ignore', windowsHide: false, env });
-          await waitForSpawn(child);
-          owned = { child, directory, endpoint: null };
-          started = true;
-          break;
-        } catch (error) {
-          lastError = error;
-          if (error?.code === 'ENOENT') continue;
-          throw error;
-        }
+      let child;
+      try {
+        child = spawn(executable, args, { stdio: 'ignore', windowsHide: false, env });
+        await waitForSpawn(child);
+      } catch (error) {
+        throw new Error(`Chrome could not be started: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
       }
-      if (!started) throw new Error(`Chrome could not be started: ${lastError?.message ?? 'no Chrome executable found'}`, { cause: lastError });
-
+      owned = { child, directory, endpoint: null };
       owned.endpoint = await waitForDevTools(owned.child, directory);
       return { browserUrl: owned.endpoint, owned: true };
     } catch (error) {
@@ -155,22 +155,6 @@ export function createChromeLauncher(deps = {}) {
     if (owned === current) owned = undefined;
     return true;
   }
-}
-
-function chromeCandidates(platform, env) {
-  if (typeof env.CHROME_PATH === 'string' && env.CHROME_PATH.trim()) return [env.CHROME_PATH];
-  if (platform === 'darwin') return [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    'google-chrome',
-  ];
-  if (platform === 'win32') return [
-    env.PROGRAMFILES ? path.join(env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe') : 'chrome.exe',
-    env['PROGRAMFILES(X86)'] ? path.join(env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe') : 'chrome.exe',
-    env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe') : 'chrome.exe',
-    'chrome.exe',
-  ];
-  return ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'];
 }
 
 function toMatchPattern(origin) {

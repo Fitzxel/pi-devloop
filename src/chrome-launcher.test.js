@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFile as nodeReadFile } from 'node:fs/promises';
 import { createChromeLauncher } from './chrome-launcher.js';
 
 function makeChild(onKill) {
@@ -20,7 +21,7 @@ function makeChild(onKill) {
 test('launches an isolated Chrome at the ready URL and closes only its owned child/profile', async () => {
   const calls = [];
   const chrome = createChromeLauncher({
-    env: { CHROME_PATH: '/opt/mock/chrome' },
+    env: { PI_DEVLOOP_CHROME_PATH: '/opt/mock/chrome' },
     mkdtemp: async (prefix) => { calls.push(['mkdtemp', prefix]); return '/tmp/pi-devloop-owned'; },
     readFile: async (file) => { assert.equal(file, '/tmp/pi-devloop-owned/DevToolsActivePort'); return '43127\n/devtools/browser/test'; },
     writeFile: async (file, content) => calls.push(['writeFile', file, content]),
@@ -55,6 +56,24 @@ test('launches an isolated Chrome at the ready URL and closes only its owned chi
   assert.equal(await chrome.close(), false);
 });
 
+test('uses the Chrome for Testing resolver when no compatible browser path is configured', async () => {
+  const calls = [];
+  const chrome = createChromeLauncher({
+    env: {},
+    platform: 'win32',
+    readFile: async () => '43127\n/devtools/browser/test',
+    resolveChromeForTesting: async () => { calls.push(['resolve-cft']); return String.raw`C:\cache\chrome-for-testing\chrome.exe`; },
+    spawn: (command, args) => { calls.push(['spawn', command, args]); return makeChild(); },
+    fetch: async () => ({ ok: true }),
+    sleep: async () => {},
+  });
+
+  await chrome.open('http://localhost:3000', { endpoint: 'http://127.0.0.1:43200/selection', token: 'fresh', targetOrigin: 'http://localhost:3000' });
+  assert.deepEqual(calls.find(([kind]) => kind === 'resolve-cft'), ['resolve-cft']);
+  assert.equal(calls.find(([kind]) => kind === 'spawn')[1], String.raw`C:\cache\chrome-for-testing\chrome.exe`);
+  await chrome.close();
+});
+
 test('does not install an extension into a configured external browser', async () => {
   const calls = [];
   const chrome = createChromeLauncher({
@@ -82,7 +101,7 @@ test('opens a new tab in configured Chrome without launching or closing it', asy
 test('concurrent opens launch one owned Chrome and open subsequent URLs in a new tab', async () => {
   const calls = [];
   const chrome = createChromeLauncher({
-    env: { CHROME_PATH: '/opt/mock/chrome' },
+    env: { PI_DEVLOOP_CHROME_PATH: '/opt/mock/chrome' },
     mkdtemp: async () => '/tmp/pi-devloop-concurrent',
     readFile: async () => '43128\n',
     rm: async () => {},
@@ -107,7 +126,7 @@ test('relaunches Chrome after the previously owned process exits unexpectedly', 
   const children = [];
   const directories = ['/tmp/pi-devloop-first', '/tmp/pi-devloop-second'];
   const chrome = createChromeLauncher({
-    env: { CHROME_PATH: '/opt/mock/chrome' },
+    env: { PI_DEVLOOP_CHROME_PATH: '/opt/mock/chrome' },
     mkdtemp: async () => directories.shift(),
     readFile: async () => '43129\n',
     rm: async (directory) => calls.push(['rm', directory]),
@@ -130,7 +149,7 @@ test('relaunches Chrome after the previously owned process exits unexpectedly', 
 test('cleans the temporary profile if Chrome cannot be spawned', async () => {
   const calls = [];
   const chrome = createChromeLauncher({
-    env: { CHROME_PATH: '/missing/chrome' },
+    env: { PI_DEVLOOP_CHROME_PATH: '/missing/chrome' },
     mkdtemp: async () => '/tmp/pi-devloop-failed',
     rm: async (...args) => calls.push(['rm', ...args]),
     spawn: () => {
@@ -144,6 +163,33 @@ test('cleans the temporary profile if Chrome cannot be spawned', async () => {
 
   await assert.rejects(chrome.open('http://localhost:3000'), /Chrome could not be started/);
   assert(calls.some(([kind, directory]) => kind === 'rm' && directory === '/tmp/pi-devloop-failed'));
+});
+
+test('uses the pi-devloop executable override and ignores generic CHROME_PATH', async () => {
+  const createMock = (env) => {
+    const calls = [];
+    const chrome = createChromeLauncher({
+      env,
+      readFile: async (file, ...args) => file.endsWith('DevToolsActivePort') ? '43130\n' : nodeReadFile(file, ...args),
+      resolveChromeForTesting: async () => { calls.push(['resolve']); return '/opt/mock/cft'; },
+      spawn: (command) => { calls.push(['spawn', command]); return makeChild(); },
+      fetch: async () => ({ ok: true }),
+      sleep: async () => {},
+    });
+    return { chrome, calls };
+  };
+
+  const configured = createMock({ PI_DEVLOOP_CHROME_PATH: '/opt/pi-devloop/chromium' });
+  await configured.chrome.open('http://localhost:3000');
+  assert.equal(configured.calls.find(([kind]) => kind === 'spawn')[1], '/opt/pi-devloop/chromium');
+  assert.equal(configured.calls.filter(([kind]) => kind === 'resolve').length, 0);
+  await configured.chrome.close();
+
+  const generic = createMock({ CHROME_PATH: '/opt/generic/chrome' });
+  await generic.chrome.open('http://localhost:3000');
+  assert.equal(generic.calls.find(([kind]) => kind === 'spawn')[1], '/opt/mock/cft');
+  assert.equal(generic.calls.filter(([kind]) => kind === 'resolve').length, 1);
+  await generic.chrome.close();
 });
 
 test('surfaces configured-browser navigation failure without taking ownership', async () => {
