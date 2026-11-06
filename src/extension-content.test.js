@@ -73,7 +73,12 @@ function loadContentScript(storage = createStorage(), sendMessageHandler = (_mes
     createElement(tagName) { const element = new FakeElement(tagName); created.push(element); return element; },
   };
   const sentMessages = [];
-  const window = {};
+  const windowListeners = {};
+  const window = {
+    innerWidth: 1024,
+    innerHeight: 768,
+    addEventListener(name, callback) { windowListeners[name] = callback; },
+  };
   const chrome = {
     runtime: {
       lastError: null,
@@ -88,7 +93,7 @@ function loadContentScript(storage = createStorage(), sendMessageHandler = (_mes
     location: { href: 'http://localhost:3000/page' },
     setTimeout() { return 1; },
   });
-  return { window, document, documentListeners, runtimeListeners, created, sentMessages };
+  return { window, windowListeners, document, documentListeners, runtimeListeners, created, sentMessages };
 }
 
 function createStorage() {
@@ -133,6 +138,102 @@ function findElement(root, predicate) {
   return null;
 }
 
+
+test('sizes both Send actions as compact toolbar controls', () => {
+  const extension = loadContentScript();
+  const shadow = getShadow(extension);
+  const targetToolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
+  const globalToolbar = findElement(shadow, (node) => node.className === 'global-toolbar');
+  const targetSend = findElement(targetToolbar, (node) => node.dataset.send);
+  const globalSend = findElement(globalToolbar, (node) => node.dataset.sendAll);
+  const styleText = shadow.children.find((node) => node.tagName === 'STYLE').textContent;
+
+  assert.ok(targetSend.className.includes('toolbar-submit'));
+  assert.ok(globalSend.className.includes('toolbar-submit'));
+  assert.match(styleText, /\.toolbar-submit\s*\{[^}]*min-height:\s*32px/);
+});
+
+test('keeps toolbar inputs compact when focused', () => {
+  const extension = loadContentScript();
+  const shadow = getShadow(extension);
+  const targetToolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
+  const globalToolbar = findElement(shadow, (node) => node.className === 'global-toolbar');
+  const targetInput = targetToolbar.querySelector('textarea');
+  const globalInput = globalToolbar.querySelector('textarea');
+  const styleText = shadow.children.find((node) => node.tagName === 'STYLE').textContent;
+
+  assert.ok(targetInput.className.includes('toolbar-composer'));
+  assert.ok(globalInput.className.includes('toolbar-composer'));
+  assert.match(styleText, /\.toolbar-composer\s*\{[^}]*height:\s*36px/);
+  assert.doesNotMatch(styleText, /\.toolbar-composer:focus\s*\{/);
+  assert.match(styleText, /textarea:focus-visible\s*\{[^}]*box-shadow/);
+  assert.match(styleText, /\.target-toolbar,\s*\.global-toolbar\s*\{[^}]*flex-direction:\s*row/);
+  assert.match(styleText, /@media\s*\(max-width:\s*540px\)[\s\S]*flex-wrap:\s*wrap/);
+});
+
+test('uses a trash icon for removing a target', () => {
+  const extension = loadContentScript();
+  const shadow = getShadow(extension);
+  const toolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
+  const removeButton = findElement(toolbar, (node) => node.dataset.removeTarget);
+
+  assert.equal(removeButton.attributes['aria-label'], 'Remove active element from selection');
+  assert.match(removeButton.innerHTML, /<svg[^>]*aria-hidden="true"/);
+  assert.match(removeButton.innerHTML, /<path d="M3 6h18/);
+  assert.doesNotMatch(removeButton.innerHTML, /M18 6 6 18/);
+});
+
+test('positions the target toolbar near its element and flips at viewport edges', () => {
+  const extension = loadContentScript();
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  const shadow = getShadow(extension);
+  const toolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
+  const globalToolbar = findElement(shadow, (node) => node.className === 'global-toolbar');
+  toolbar.rect = { left: 0, top: 0, right: 320, bottom: 60, width: 320, height: 60 };
+  globalToolbar.rect = { left: 40, top: 528, right: 760, bottom: 584, width: 720, height: 56 };
+  const target = new FakeElement('section');
+  target.rect = { left: 200, top: 100, right: 260, bottom: 130, width: 60, height: 30 };
+  const child = new FakeElement('button');
+  child.rect = { left: 40, top: 60, right: 80, bottom: 80, width: 40, height: 20 };
+  target.append(child);
+  extension.window.innerWidth = 800;
+  extension.window.innerHeight = 600;
+
+  clickPageElement(extension, target);
+  assert.equal(toolbar.style.left, '200px', 'default placement aligns to the target left edge');
+  assert.equal(toolbar.style.top, '142px', 'default placement sits below the target');
+  assert.equal(toolbar.style.transform, 'none');
+
+  target.rect = { left: 100, top: 420, right: 160, bottom: 450, width: 60, height: 30 };
+  extension.windowListeners.scroll();
+  assert.equal(toolbar.style.left, '100px');
+  assert.equal(toolbar.style.top, '348px', 'bottom placement flips above to preserve clearance from the global toolbar');
+
+  target.rect = { left: 760, top: 500, right: 790, bottom: 530, width: 30, height: 30 };
+  extension.windowListeners.resize();
+  assert.equal(toolbar.style.left, '468px', 'horizontal overflow flips alignment to the target right edge and keeps the viewport gutter');
+  assert.equal(toolbar.style.top, '428px', 'vertical overflow flips the toolbar above the target');
+
+  target.rect = { left: 30, top: 20, right: 50, bottom: 40, width: 20, height: 20 };
+  extension.windowListeners.scroll();
+  assert.equal(toolbar.style.left, '30px');
+  assert.equal(toolbar.style.top, '52px', 'scroll repositions the toolbar with its target');
+
+  extension.window.innerWidth = 360;
+  extension.window.innerHeight = 640;
+  toolbar.rect = { left: 0, top: 0, right: 336, bottom: 96, width: 336, height: 96 };
+  globalToolbar.rect = { left: 12, top: 535, right: 348, bottom: 625, width: 336, height: 90 };
+  target.rect = { left: 330, top: 560, right: 350, bottom: 600, width: 20, height: 40 };
+  extension.windowListeners.resize();
+  assert.equal(toolbar.style.left, '12px', 'narrow viewports clamp the right-aligned toolbar inside the gutter');
+  assert.equal(toolbar.style.top, '427px', 'narrow viewports flip/clamp above without colliding with the global toolbar');
+
+  extension.window.innerWidth = 800;
+  extension.windowListeners.resize();
+  findElement(toolbar, (node) => node.dataset.child).listeners.click();
+  assert.equal(toolbar.style.left, '40px', 'target navigation reanchors the toolbar to the newly selected element');
+  assert.equal(toolbar.style.top, '92px');
+});
 
 test('active hover shows a transient preview without pinning or changing targets', () => {
   const extension = loadContentScript();

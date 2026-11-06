@@ -58,68 +58,70 @@
       animation: arrive 180ms ease-out both;
     }
 
-    .target-toolbar {
+    .target-toolbar, .global-toolbar {
       position: fixed;
-      bottom: 190px;
       left: 50%;
       display: none;
-      flex-direction: column;
+      align-items: center;
+      flex-direction: row;
       gap: 8px;
-      width: min(420px, calc(100vw - 24px));
-      padding: 12px;
+      width: min(720px, calc(100vw - 24px));
+      min-height: 56px;
+      padding: 8px 10px;
       transform: translateX(-50%);
       color: var(--ink);
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 11px;
       box-shadow: 0 8px 24px rgb(36 24 13 / 20%);
       font-size: 12px;
       line-height: 1.3;
       pointer-events: auto;
-      z-index: 4;
+      overflow: visible;
     }
+    .target-toolbar { left: 0; top: 0; bottom: auto; transform: none; z-index: 4; }
+    .global-toolbar { bottom: 16px; z-index: 5; }
 
-    .target-toolbar-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .target-toolbar-title { overflow: hidden; color: var(--ink); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .target-toolbar-header { display: flex; flex: 0 1 320px; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+    .target-toolbar-title { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--ink); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
     .toolbar-arrows { display: flex; flex: 0 0 auto; gap: 4px; }
     .toolbar-button { display: grid; width: 30px; min-height: 30px; place-items: center; padding: 0; color: var(--ink); background: var(--surface-soft); }
     .toolbar-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .selection-label { position: fixed; z-index: 3; max-width: min(260px, calc(100vw - 16px)); overflow: hidden; min-height: 0; padding: 4px 8px; border-radius: 5px; color: var(--accent-ink); background: var(--accent); font: 600 11px/1.3 ui-sans-serif, system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; pointer-events: auto; }
     .selection-label:hover { background: var(--accent-hover); }
     .selection-label[data-active="true"] { box-shadow: 0 0 0 2px var(--surface); }
-    .target-toolbar textarea { min-height: 72px; }
-    .target-toolbar .actions { margin-top: 0; }
-    .target-toolbar .submit-status { margin: 0; }
-
-    .global-toolbar {
-      position: fixed;
-      bottom: 16px;
-      left: 50%;
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-      width: min(520px, calc(100vw - 24px));
-      padding: 12px;
-      transform: translateX(-50%);
-      color: var(--ink);
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: 0 8px 24px rgb(36 24 13 / 20%);
-      font-size: 12px;
-      line-height: 1.3;
-      pointer-events: auto;
-      z-index: 5;
-    }
-    .global-toolbar-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .target-toolbar .label, .global-toolbar .label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .global-toolbar-header { display: flex; flex: 0 0 176px; min-width: 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+    .global-toolbar-header .target-toolbar-title { max-width: 100%; }
     .global-toolbar-count { color: var(--muted); font-size: 11px; }
-    .global-toolbar textarea { min-height: 64px; }
-    .global-toolbar .actions { margin-top: 0; }
-    .global-toolbar .submit-status { margin: 0; }
+
+    .toolbar-composer {
+      display: block;
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+      height: 36px;
+      min-height: 36px;
+      max-height: 36px;
+      padding: 8px 10px;
+      resize: none;
+      overflow: hidden;
+      border-radius: 8px;
+    }
+    .target-toolbar .actions, .global-toolbar .actions { flex: 0 0 auto; gap: 6px; margin: 0; }
+    .toolbar-submit { min-width: 56px; min-height: 32px; padding: 6px 10px; border-radius: 7px; font-size: 12px; line-height: 1.2; }
+    .target-toolbar .submit-status, .global-toolbar .submit-status { flex: 0 1 auto; min-width: 0; max-width: 160px; overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
+
+    @media (max-width: 540px) {
+      .target-toolbar, .global-toolbar { flex-wrap: wrap; gap: 6px; padding: 8px; }
+      .target-toolbar-header, .global-toolbar-header { flex: 1 1 100%; }
+      .global-toolbar-header { flex-direction: row; align-items: center; justify-content: space-between; }
+      .target-toolbar-title { max-width: none; }
+      .target-toolbar .submit-status, .global-toolbar .submit-status { flex: 1 1 100%; max-width: none; white-space: normal; }
+    }
 
     @media (max-height: 520px) {
-      .target-toolbar { bottom: 170px; max-height: calc(100vh - 190px); overflow: auto; }
-      .global-toolbar textarea { min-height: 48px; }
+      .toolbar-composer { height: 32px; min-height: 32px; max-height: 32px; }
     }
 
     .success-notice { border-color: var(--success); }
@@ -242,7 +244,7 @@
   removeTargetButton.type = 'button';
   removeTargetButton.dataset.removeTarget = 'true';
   removeTargetButton.setAttribute('aria-label', 'Remove active element from selection');
-  removeTargetButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  removeTargetButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v5m4-5v5"/></svg>';
   removeTargetButton.disabled = true;
   toolbarArrows.append(removeTargetButton);
   toolbarHeader.append(toolbarArrows);
@@ -250,6 +252,7 @@
   targetInstructionLabel.className = 'label';
   targetInstructionLabel.textContent = 'Instruction for this element';
   const targetInstruction = document.createElement('textarea');
+  targetInstruction.className = 'toolbar-composer';
   targetInstruction.maxLength = 4000;
   targetInstruction.setAttribute('maxlength', '4000');
   targetInstruction.placeholder = 'What should change for this element?';
@@ -258,7 +261,7 @@
   const targetActions = document.createElement('div');
   targetActions.className = 'actions';
   const targetSend = document.createElement('button');
-  targetSend.className = 'submit';
+  targetSend.className = 'submit toolbar-submit';
   targetSend.type = 'submit';
   targetSend.dataset.send = 'true';
   targetSend.textContent = 'Send';
@@ -290,6 +293,7 @@
   globalInstructionLabel.className = 'label';
   globalInstructionLabel.textContent = 'Global instruction';
   const globalInstructionInput = document.createElement('textarea');
+  globalInstructionInput.className = 'toolbar-composer';
   globalInstructionInput.id = 'global-instruction';
   globalInstructionInput.maxLength = 4000;
   globalInstructionInput.setAttribute('maxlength', '4000');
@@ -298,7 +302,7 @@
   const globalActions = document.createElement('div');
   globalActions.className = 'actions';
   const globalSend = document.createElement('button');
-  globalSend.className = 'submit';
+  globalSend.className = 'submit toolbar-submit';
   globalSend.type = 'submit';
   globalSend.dataset.sendAll = 'true';
   globalSend.textContent = 'Send all';
@@ -424,6 +428,48 @@
     Object.assign(target.label.style, { display: 'block', left: `${left}px`, top: `${top}px` });
   };
 
+  const positionTargetToolbar = () => {
+    if (!active || !activeTarget || selectionToolbar.style.display === 'none') return;
+    const targetRect = activeTarget.element.getBoundingClientRect();
+    const toolbarRect = selectionToolbar.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || targetRect.right + toolbarRect.width;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || targetRect.bottom + toolbarRect.height;
+    const gutter = 12;
+    const gap = 12;
+    const maxLeft = Math.max(gutter, viewportWidth - toolbarRect.width - gutter);
+    const globalToolbarRect = globalToolbar.style.display === 'none' ? null : globalToolbar.getBoundingClientRect();
+    const globalClearanceTop = globalToolbarRect?.height > 0 ? globalToolbarRect.top - gap : viewportHeight - gutter;
+    const bottomLimit = Math.max(gutter, Math.min(viewportHeight - gutter, globalClearanceTop));
+    const maxTop = Math.max(gutter, bottomLimit - toolbarRect.height);
+    let left = targetRect.left;
+    if (left + toolbarRect.width > viewportWidth - gutter) left = targetRect.right - toolbarRect.width;
+    left = Math.max(gutter, Math.min(left, maxLeft));
+
+    let top = targetRect.bottom + gap;
+    if (top + toolbarRect.height > bottomLimit) {
+      const aboveTarget = targetRect.top - toolbarRect.height - gap;
+      top = aboveTarget >= gutter && aboveTarget <= maxTop ? aboveTarget : maxTop;
+    }
+    top = Math.max(gutter, Math.min(top, maxTop));
+
+    Object.assign(selectionToolbar.style, {
+      left: `${left}px`,
+      top: `${top}px`,
+      right: 'auto',
+      bottom: 'auto',
+      transform: 'none',
+    });
+  };
+
+  const updateTargetPositions = () => {
+    if (!active) return;
+    for (const target of targets) positionTarget(target);
+    positionTargetToolbar();
+  };
+
+  window.addEventListener('resize', updateTargetPositions, { passive: true });
+  window.addEventListener('scroll', updateTargetPositions, { passive: true, capture: true });
+
   const hideHoverPreview = () => { hoverMarker.style.display = 'none'; };
 
   const onPointerMove = (event) => {
@@ -462,6 +508,7 @@
     for (const target of targets) positionTarget(target);
     updateToolbarAvailability();
     updateGlobalToolbar();
+    positionTargetToolbar();
   };
 
   const saveActiveInstruction = () => {
