@@ -1,0 +1,75 @@
+name: Test and publish to npm
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run test suite
+        run: npm test
+
+  publish:
+    name: Publish version bump
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Ensure npm supports trusted publishing
+        run: npm install --global npm@11.5.1
+      - name: Check whether package version changed
+        id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+
+          const beforeSha = process.env.BEFORE_SHA ?? '';
+          let previousVersion = null;
+          if (/^[0-9a-f]{40}$/i.test(beforeSha) && !/^0+$/.test(beforeSha)) {
+            try {
+              const previousPackage = execFileSync('git', ['show', `${beforeSha}:package.json`], { encoding: 'utf8' });
+              previousVersion = JSON.parse(previousPackage).version ?? null;
+            } catch {
+              // No prior package manifest means there is no existing version to compare.
+            }
+          }
+
+          const currentVersion = JSON.parse(readFileSync('package.json', 'utf8')).version ?? null;
+          const bumped = Boolean(previousVersion && currentVersion && previousVersion !== currentVersion);
+          appendFileSync(process.env.GITHUB_OUTPUT, `bumped=${bumped}\n`);
+          console.log(bumped
+            ? `Package version changed from ${previousVersion} to ${currentVersion}.`
+            : `Package version was not changed from ${previousVersion ?? 'a prior version'}; skipping publish.`);
+          NODE
+      - name: Publish package
+        if: steps.version.outputs.bumped == 'true'
+        run: npm publish
