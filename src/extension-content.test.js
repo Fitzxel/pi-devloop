@@ -179,8 +179,8 @@ test('uses a trash icon for removing a target', () => {
 
   assert.equal(removeButton.attributes['aria-label'], 'Remove active element from selection');
   assert.match(removeButton.innerHTML, /<svg[^>]*aria-hidden="true"/);
-  assert.match(removeButton.innerHTML, /<path d="M3 6h18/);
-  assert.doesNotMatch(removeButton.innerHTML, /M18 6 6 18/);
+  assert.match(removeButton.innerHTML, /<path d="M4 7h16"/);
+  assert.match(removeButton.innerHTML, /M10 12l4 4m0 -4l-4 4/);
 });
 
 test('positions the target toolbar near its element and flips at viewport edges', () => {
@@ -503,11 +503,10 @@ test('general Send batches numbered targets and instruction drafts with retry-sa
   globalToolbar.onsubmit({ preventDefault() {} });
   callbacks[1]({ ok: true });
   assert.equal(globalInstruction.value, '');
-  labels[0].listeners.click();
-  assert.equal(targetToolbar.querySelector('textarea').value, '');
-  labels[1].listeners.click();
-  assert.equal(targetToolbar.querySelector('textarea').value, '');
-  assert.equal(status.textContent, 'Batch sent to Pi.');
+  assert.equal(labels[0].removed, true);
+  assert.equal(labels[1].removed, true);
+  assert.equal(targetToolbar.style.display, 'none');
+  assert.equal(findElement(globalToolbar, (node) => node.className === 'global-toolbar-count').textContent, '0/5 elements selected');
   assert.equal(sendAll.disabled, true);
 });
 

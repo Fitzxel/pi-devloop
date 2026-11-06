@@ -179,7 +179,7 @@
     }
 
     button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    button:disabled { opacity: .62; cursor: wait; }
+    button:disabled { opacity: .62; cursor: unset; }
     .cancel { color: var(--muted); background: var(--surface-soft); }
     .submit { color: var(--accent-ink); background: var(--accent); }
     .submit:hover { background: var(--accent-hover); }
@@ -244,10 +244,16 @@
   removeTargetButton.type = 'button';
   removeTargetButton.dataset.removeTarget = 'true';
   removeTargetButton.setAttribute('aria-label', 'Remove active element from selection');
-  removeTargetButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v5m4-5v5"/></svg>';
+  removeTargetButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4 7h16" /><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" /><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" /><path d="M10 12l4 4m0 -4l-4 4" /></svg>';
   removeTargetButton.disabled = true;
   toolbarArrows.append(removeTargetButton);
   toolbarHeader.append(toolbarArrows);
+  const closeTargetToolbarButton = document.createElement('button');
+  closeTargetToolbarButton.className = 'toolbar-button';
+  closeTargetToolbarButton.type = 'button';
+  closeTargetToolbarButton.setAttribute('aria-label', 'Close element toolbar');
+  closeTargetToolbarButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></svg>';
+  toolbarHeader.append(closeTargetToolbarButton);
   const targetInstructionLabel = document.createElement('label');
   targetInstructionLabel.className = 'label';
   targetInstructionLabel.textContent = 'Instruction for this element';
@@ -329,6 +335,7 @@
   const targets = [];
   let nextTargetNumber = 1;
   let activeTarget = null;
+  let targetToolbarDismissed = false;
   let focusReturnTarget = null;
   let globalInstruction = '';
   let globalStatusKind = '';
@@ -490,7 +497,7 @@
   };
 
   const updateTargetToolbar = () => {
-    if (!active || !activeTarget) {
+    if (!active || !activeTarget || targetToolbarDismissed) {
       selectionToolbar.style.display = 'none';
       updateGlobalToolbar();
       return;
@@ -518,6 +525,7 @@
   const setActiveTarget = (target, focusInput = false) => {
     if (activeTarget !== target) saveActiveInstruction();
     activeTarget = target;
+    targetToolbarDismissed = false;
     updateTargetToolbar();
     if (focusInput) targetInstruction.focus();
   };
@@ -703,21 +711,16 @@
         showFeedbackNotice(globalStatus.textContent, 'error');
         return;
       }
-      for (const target of targets) {
-        target.instruction = '';
-        target.status = 'Sent with batch.';
-        target.statusKind = 'success';
-      }
-      globalInstruction = '';
-      globalInstructionInput.value = '';
-      globalStatus.textContent = 'Batch sent to Pi.';
-      globalStatusKind = 'success';
-      updateTargetToolbar();
-      updateGlobalToolbar();
+      clearTargets();
       showFeedbackNotice('Feedback batch sent to Pi.', 'success');
     });
   };
 
+  closeTargetToolbarButton.addEventListener('click', () => {
+    saveActiveInstruction();
+    targetToolbarDismissed = true;
+    selectionToolbar.style.display = 'none';
+  });
   parentButton.addEventListener('click', () => navigateActiveTarget('parent'));
   childButton.addEventListener('click', () => navigateActiveTarget('child'));
   removeTargetButton.addEventListener('click', removeActiveTarget);

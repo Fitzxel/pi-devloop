@@ -33,7 +33,7 @@ h1 { font-size: 18px; line-height: 1.25; font-weight: 680; letter-spacing: -.02e
 .toggle:hover:not(:disabled) { background: var(--accent-hover); }
 .toggle:active:not(:disabled) { transform: translateY(1px); }
 .toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; box-shadow: inset 0 0 0 3px var(--focus-on-accent); }
-.toggle:disabled { opacity: .62; cursor: wait; }
+.toggle:disabled { opacity: .62; cursor: unset; }
 .shortcut { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 13px; color: var(--muted); font-size: 12px; }
 kbd { min-width: 20px; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--soft); font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif; text-align: center; }
 .note { padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
