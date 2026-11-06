@@ -153,7 +153,7 @@ test('sizes both Send actions as compact toolbar controls', () => {
   assert.match(styleText, /\.toolbar-submit\s*\{[^}]*min-height:\s*32px/);
 });
 
-test('keeps toolbar inputs compact when focused', () => {
+test('keeps toolbar controls in one compact row', () => {
   const extension = loadContentScript();
   const shadow = getShadow(extension);
   const targetToolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
@@ -168,7 +168,9 @@ test('keeps toolbar inputs compact when focused', () => {
   assert.doesNotMatch(styleText, /\.toolbar-composer:focus\s*\{/);
   assert.match(styleText, /textarea:focus-visible\s*\{[^}]*box-shadow/);
   assert.match(styleText, /\.target-toolbar,\s*\.global-toolbar\s*\{[^}]*flex-direction:\s*row/);
-  assert.match(styleText, /@media\s*\(max-width:\s*540px\)[\s\S]*flex-wrap:\s*wrap/);
+  assert.match(styleText, /@media\s*\(max-width:\s*540px\)[\s\S]*flex-wrap:\s*nowrap/);
+  assert.ok(targetToolbar.children.indexOf(targetInput) < targetToolbar.children.findIndex((node) => node.className === 'toolbar-arrows'));
+  assert.ok(targetToolbar.children.indexOf(targetInput) < targetToolbar.children.findIndex((node) => node.className === 'actions'));
 });
 
 test('uses a trash icon for removing a target', () => {
