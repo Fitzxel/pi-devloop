@@ -134,6 +134,52 @@ function findElement(root, predicate) {
 }
 
 
+test('active hover shows a transient preview without pinning or changing targets', () => {
+  const extension = loadContentScript();
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  const first = new FakeElement('button');
+  clickPageElement(extension, first);
+  const pinnedLabel = getShadow(extension).children.find((node) => node.className === 'selection-label');
+  const hovered = new FakeElement('article');
+  hovered.rect = { x: 40, y: 50, left: 40, top: 50, right: 160, bottom: 90, width: 120, height: 40 };
+
+  assert.equal(typeof extension.documentListeners.pointermove, 'function', 'active selection should track hover for a preview');
+  extension.documentListeners.pointermove({ target: hovered, composedPath: () => [hovered, extension.document.documentElement] });
+
+  const preview = getShadow(extension).children.find((node) => node.className === 'hover-marker');
+  assert.ok(preview);
+  assert.equal(preview.style.display, 'block');
+  assert.equal(preview.style.left, '40px');
+  assert.equal(preview.style.top, '50px');
+  assert.equal(pinnedLabel.dataset.number, '1');
+  assert.deepEqual(getShadow(extension).children.filter((node) => node.className === 'selection-label').map((node) => node.dataset.number), ['1']);
+
+  extension.documentListeners.pointermove({ target: extension.document.documentElement, composedPath: () => [extension.document.documentElement] });
+  assert.equal(preview.style.display, 'none', 'leaving page content clears only the transient preview');
+  assert.equal(pinnedLabel.removed, false, 'clearing a hover preview must not remove pinned targets');
+});
+
+test('shows the global composer on activation and keeps its preselection draft', () => {
+  const extension = loadContentScript();
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  const shadow = getShadow(extension);
+  const globalToolbar = findElement(shadow, (node) => node.className === 'global-toolbar');
+  const count = findElement(globalToolbar, (node) => node.className === 'global-toolbar-count');
+  const instruction = globalToolbar.querySelector('textarea');
+  const sendAll = findElement(globalToolbar, (node) => node.dataset.sendAll);
+
+  assert.equal(globalToolbar.style.display, 'flex');
+  assert.equal(count.textContent, '0/5 elements selected');
+  assert.equal(instruction.disabled, false);
+  assert.equal(sendAll.disabled, true, 'Send all cannot run before selecting a target');
+  instruction.value = 'Make the heading clearer';
+  instruction.listeners.input({ target: instruction });
+  clickPageElement(extension, new FakeElement('h1'));
+  assert.equal(instruction.value, 'Make the heading clearer');
+  assert.equal(globalToolbar.style.display, 'flex');
+  assert.equal(sendAll.disabled, false);
+});
+
 test('pins numbered targets on page clicks and leaves them unchanged on hover', () => {
   const extension = loadContentScript();
   extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});

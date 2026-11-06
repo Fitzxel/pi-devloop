@@ -182,8 +182,9 @@
     .submit { color: var(--accent-ink); background: var(--accent); }
     .submit:hover { background: var(--accent-hover); }
     .error { margin: 12px 0 0; color: var(--danger); }
-    .marker { position: fixed; pointer-events: none; border: 2px solid var(--accent); background: var(--marker-fill); box-shadow: 0 0 0 1px var(--marker-keyline-light), 0 0 0 3px var(--marker-keyline-dark); display: none; }
+    .marker { position: fixed; z-index: 3; pointer-events: none; border: 2px solid var(--accent); background: var(--marker-fill); box-shadow: 0 0 0 1px var(--marker-keyline-light), 0 0 0 3px var(--marker-keyline-dark); display: none; }
     .marker[data-active="true"] { border-color: var(--accent-hover); }
+    .hover-marker { position: fixed; z-index: 2; display: none; pointer-events: none; border: 1px dashed var(--accent-hover); background: var(--marker-fill); box-shadow: 0 0 0 1px var(--marker-keyline-light), 0 0 0 3px var(--marker-keyline-dark); }
 
     @media (prefers-color-scheme: dark) {
       :host {
@@ -305,6 +306,9 @@
   globalToolbar.append(globalActions);
   globalToolbar.append(globalStatus);
 
+  const hoverMarker = document.createElement('div');
+  hoverMarker.className = 'hover-marker';
+  ui.append(hoverMarker);
   let shortcutToast = null;
   ui.append(selectionToolbar);
   ui.append(globalToolbar);
@@ -410,6 +414,25 @@
     Object.assign(target.label.style, { display: 'block', left: `${left}px`, top: `${top}px` });
   };
 
+  const hideHoverPreview = () => { hoverMarker.style.display = 'none'; };
+
+  const onPointerMove = (event) => {
+    const element = event.target;
+    if (!active || isExtensionUiEvent(event) || !(element instanceof Element) ||
+      element === document.documentElement || element === document.body ||
+      element.closest('[data-pi-devloop-host]') || !isVisibleElement(element) ||
+      targets.some((target) => target.element === element)) {
+      hideHoverPreview();
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    Object.assign(hoverMarker.style, {
+      display: 'block', left: `${rect.left}px`, top: `${rect.top}px`,
+      width: `${rect.width}px`, height: `${rect.height}px`,
+    });
+  };
+
   const updateTargetToolbar = () => {
     if (!active || !activeTarget) {
       selectionToolbar.style.display = 'none';
@@ -480,6 +503,7 @@
     }
     targets.length = 0;
     activeTarget = null;
+    hideHoverPreview();
     selectionToolbar.style.display = 'none';
     targetInstruction.value = '';
     targetStatus.textContent = '';
@@ -620,6 +644,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     addTarget(element);
+    hideHoverPreview();
   };
 
   const onKeyDown = (event) => {
@@ -629,6 +654,7 @@
     clearTargets();
   };
 
+  document.addEventListener('pointermove', onPointerMove, true);
   document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeyDown, true);
 
@@ -642,6 +668,7 @@
     else return;
 
     if (!active) clearTargets();
+    else updateTargetToolbar();
     respond?.({ active });
   });
 
