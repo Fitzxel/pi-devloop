@@ -18,15 +18,21 @@
     :host {
       all: initial;
       color-scheme: light dark;
-      --ink: #142139;
-      --muted: #596b84;
-      --surface: #ffffff;
-      --surface-soft: #f3f6fb;
-      --line: #d8e0eb;
-      --accent: #315bd6;
-      --accent-hover: #254bb9;
-      --focus: #7897f0;
-      --danger: #b42318;
+      --ink: #2b2115;
+      --muted: #735c3e;
+      --surface: #fffaf0;
+      --surface-soft: #fff0cf;
+      --line: #e4d1ae;
+      --field-line: #ad8753;
+      --accent: #9a4d00;
+      --accent-hover: #7c3900;
+      --accent-ink: #fffaf2;
+      --focus: #8a4600;
+      --focus-halo: rgb(180 83 9 / 24%);
+      --marker-fill: rgb(217 119 6 / 12%);
+      --marker-keyline-light: #fffaf0;
+      --marker-keyline-dark: #24180d;
+      --danger: #a5271c;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -77,7 +83,7 @@
       width: 100%;
       min-height: 112px;
       resize: vertical;
-      border: 1px solid #aebdd0;
+      border: 1px solid var(--field-line);
       border-radius: 9px;
       padding: 11px 12px;
       color: var(--ink);
@@ -87,7 +93,7 @@
     }
 
     textarea::placeholder { color: var(--muted); opacity: 1; }
-    textarea:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(49 91 214 / 20%); }
+    textarea:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-halo); }
     .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
     button {
@@ -100,28 +106,29 @@
     }
 
     button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    .cancel { color: #344256; background: var(--surface-soft); }
-    .submit { color: #fff; background: var(--accent); }
+    .cancel { color: var(--muted); background: var(--surface-soft); }
+    .submit { color: var(--accent-ink); background: var(--accent); }
     .submit:hover { background: var(--accent-hover); }
     .error { margin: 12px 0 0; color: var(--danger); }
-    .marker { position: fixed; pointer-events: none; border: 2px solid var(--accent); background: rgb(49 91 214 / 10%); display: none; }
+    .marker { position: fixed; pointer-events: none; border: 2px solid var(--accent); background: var(--marker-fill); box-shadow: 0 0 0 1px var(--marker-keyline-light), 0 0 0 3px var(--marker-keyline-dark); display: none; }
 
     @media (prefers-color-scheme: dark) {
       :host {
-        --ink: #edf2fb;
-        --muted: #b2bfd2;
-        --surface: #182235;
-        --surface-soft: #28364d;
-        --line: #3c4b62;
-        --accent: #8ba8ff;
-        --accent-hover: #a2b8ff;
-        --focus: #9bb2ff;
+        --ink: #fff3e0;
+        --muted: #dcc29c;
+        --surface: #24180d;
+        --surface-soft: #382716;
+        --line: #5b4328;
+        --field-line: #86663d;
+        --accent: #f59e0b;
+        --accent-hover: #fbbf24;
+        --accent-ink: #291805;
+        --focus: #fbbf24;
+        --focus-halo: rgb(251 191 36 / 25%);
+        --marker-fill: rgb(251 191 36 / 14%);
         --danger: #ff9b91;
       }
-      .submit { color: #101a2c; }
       .cancel { color: var(--ink); }
-      textarea { border-color: #61718a; }
-      .marker { background: rgb(139 168 255 / 14%); }
     }
 
     @keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
