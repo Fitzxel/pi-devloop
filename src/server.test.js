@@ -87,3 +87,86 @@ test('feedback server only accepts authorized same-origin selection payloads', a
     assert.equal(received.length, 1, 'rejected requests must not reach the agent');
   }
 });
+
+test('feedback server accepts versioned individual and batch target submissions', async (t) => {
+  const received = [];
+  const server = createFeedbackServer({ token: 'multi-token', onSelection: (item) => received.push(item) });
+  const address = await server.listen();
+  t.after(() => server.close());
+  const endpoint = `http://127.0.0.1:${address.port}/selection`;
+  const headers = { 'content-type': 'application/json', origin: `chrome-extension://${DEVLOOP_EXTENSION_ID}`, authorization: 'Bearer multi-token' };
+  const target = (number, selector, instruction) => ({
+    number,
+    selector,
+    role: 'button',
+    text: `Target ${number}`,
+    outerHTML: `<button id="target-${number}">Target ${number}</button>`,
+    rect: { x: number, y: 2, width: 80, height: 24 },
+    styles: { display: 'block', position: 'static', color: 'rgb(0, 0, 0)', backgroundColor: 'transparent', fontSize: '16px', width: '80px', height: '24px' },
+    ...(instruction ? { instruction } : {}),
+  });
+  const submissions = [
+    { version: 2, mode: 'individual', pageUrl: 'http://localhost:3000/', targets: [target(1, '#first', 'Rewrite in English')] },
+    { version: 2, mode: 'batch', pageUrl: 'http://localhost:3000/', globalInstruction: 'Move 1 to where 2 is', targets: [target(1, '#first', 'Rewrite in English'), target(2, '#second')] },
+  ];
+
+  for (const payload of submissions) {
+    const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), { accepted: true });
+  }
+  assert.deepEqual(received, submissions, 'accepted submissions must reach the agent unchanged');
+});
+
+test('feedback server rejects invalid multi-target submissions without forwarding them', async (t) => {
+  const received = [];
+  const server = createFeedbackServer({ token: 'multi-token', onSelection: (item) => received.push(item) });
+  const address = await server.listen();
+  t.after(() => server.close());
+  const endpoint = `http://127.0.0.1:${address.port}/selection`;
+  const headers = { 'content-type': 'application/json', origin: `chrome-extension://${DEVLOOP_EXTENSION_ID}`, authorization: 'Bearer multi-token' };
+  const target = (number, instruction = 'Change this target') => ({ number, selector: `#target-${number}`, instruction });
+  const valid = { version: 2, mode: 'batch', pageUrl: 'http://localhost:3000/', globalInstruction: 'Arrange the targets', targets: [target(1), target(2)] };
+  const invalid = [
+    { ...valid, version: 3 },
+    { ...valid, mode: 'unknown' },
+    { ...valid, targets: [] },
+    { ...valid, targets: Array.from({ length: 6 }, (_, index) => target(index + 1)) },
+    { ...valid, targets: [target(1), target(1)] },
+    { ...valid, globalInstruction: '', targets: [target(1, ''), target(2, '')] },
+    { ...valid, targets: [{ ...target(1), selector: '' }] },
+    { ...valid, targets: [{ ...target(1), instruction: 'x'.repeat(4001) }] },
+    { ...valid, targets: [{ ...target(1), outerHTML: 'x'.repeat(4001) }] },
+    { ...valid, pageUrl: 'x'.repeat(2049) },
+    { ...valid, targets: [target(1), target(2)], mode: 'individual' },
+    { version: 2, mode: 'individual', pageUrl: 'http://localhost:3000/', targets: [target(1, '')] },
+  ];
+
+  for (const payload of invalid) {
+    const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'invalid payload' });
+    assert.deepEqual(received, [], 'rejected payloads must not reach the agent');
+  }
+});
+
+test('feedback server rejects multi-target payloads above the existing body limit', async (t) => {
+  const received = [];
+  const server = createFeedbackServer({ token: 'multi-token', onSelection: (item) => received.push(item) });
+  const address = await server.listen();
+  t.after(() => server.close());
+  const response = await fetch(`http://127.0.0.1:${address.port}/selection`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: `chrome-extension://${DEVLOOP_EXTENSION_ID}`, authorization: 'Bearer multi-token' },
+    body: JSON.stringify({
+      version: 2,
+      mode: 'batch',
+      pageUrl: 'http://localhost:3000/',
+      globalInstruction: 'g'.repeat(4000),
+      targets: Array.from({ length: 5 }, (_, index) => ({ number: index + 1, selector: `#${index}`, instruction: 'i'.repeat(4000), outerHTML: 'h'.repeat(4000) })),
+    }),
+  });
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: 'payload too large' });
+  assert.deepEqual(received, [], 'over-limit payloads must not reach the agent');
+});
