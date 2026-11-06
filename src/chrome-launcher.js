@@ -76,7 +76,9 @@ export function createChromeLauncher(deps = {}) {
     await cp(deps.extensionDirectory ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../extension'), extensionDirectory, { recursive: true });
     const manifestPath = path.join(extensionDirectory, 'manifest.json');
     const manifest = JSON.parse(await nodeReadFile(manifestPath, 'utf8'));
-    manifest.host_permissions = [toMatchPattern(config.targetOrigin)];
+    const targetPattern = toMatchPattern(config.targetOrigin);
+    manifest.host_permissions = [targetPattern];
+    manifest.content_scripts = [{ matches: [targetPattern], js: ['content.js'], run_at: 'document_idle' }];
     if (config.endpoint) manifest.host_permissions.push(toMatchPattern(new URL(config.endpoint).origin));
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}${String.fromCharCode(10)}`);
     await writeFile(path.join(extensionDirectory, 'service-worker.js'), `globalThis.DEVLOOP_CONFIG = ${JSON.stringify(config)};${String.fromCharCode(10)}${await nodeReadFile(path.join(extensionDirectory, 'service-worker.js'), 'utf8')}`);

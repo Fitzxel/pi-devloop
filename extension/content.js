@@ -4,6 +4,22 @@
   const box = document.createElement('div');
   Object.assign(box.style, { position: 'fixed', zIndex: '2147483647', pointerEvents: 'none', border: '2px solid #8b5cf6', background: 'rgba(139,92,246,.12)', display: 'none', boxSizing: 'border-box' });
   (document.documentElement || document).append(box);
+  try {
+    const toastKey = 'pi-devloop-shortcut-toast-shown';
+    if (!sessionStorage.getItem(toastKey)) {
+      sessionStorage.setItem(toastKey, 'true');
+      const toast = document.createElement('div');
+      toast.dataset.piDevloopToast = 'true';
+      toast.textContent = 'Pi Devloop is ready. Press Alt+Shift+E to select an element.';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      Object.assign(toast.style, { position: 'fixed', zIndex: '2147483647', top: '16px', right: '16px', padding: '12px 16px', background: '#18181b', color: '#fff', borderRadius: '10px', boxShadow: '0 8px 32px #0005', font: '14px/1.45 sans-serif' });
+      (document.documentElement || document).append(toast);
+      setTimeout(() => toast.remove(), 5000);
+    }
+  } catch {
+    // Storage can be unavailable on restricted pages; keep the overlay usable.
+  }
   let selected = null;
   let dialog;
   let active = false;
@@ -42,5 +58,13 @@
   };
   document.addEventListener('pointermove', move, true);
   document.addEventListener('click', onClick, true);
-  chrome.runtime.onMessage.addListener((message) => { if (message?.type === 'devloop:activate') { active = true; box.style.display = 'block'; } });
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type === 'devloop:activate') active = true;
+    else if (message?.type === 'devloop:toggle') active = !active;
+    else return;
+    if (!active) {
+      selected = null;
+      box.style.display = 'none';
+    }
+  });
 })();

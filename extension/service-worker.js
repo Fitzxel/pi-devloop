@@ -7,6 +7,17 @@ chrome.action.onClicked.addListener(async (tab) => {
   await chrome.tabs.sendMessage(tab.id, { type: 'devloop:activate' });
 });
 
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== 'toggle-overlay') return;
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.id || !tab.url || !matchesTarget(tab.url)) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: 'devloop:toggle' });
+  } catch {
+    // A tab can navigate between the active-tab lookup and message delivery.
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id || message?.type !== 'devloop:submit' || !sender.tab?.url || !matchesTarget(sender.tab.url)) return;
   fetch(CONFIG.endpoint, {

@@ -42,7 +42,13 @@ test('launches an isolated Chrome at the ready URL and closes only its owned chi
   const manifestConfig = calls.find(([kind, file]) => kind === 'writeFile' && file.endsWith('manifest.json'));
   const manifest = JSON.parse(manifestConfig[2]);
   assert.deepEqual(manifest.host_permissions, ['http://localhost:3000/*', 'http://127.0.0.1:43200/*']);
-  assert.equal(manifest.content_scripts, undefined, 'selection remains explicitly activated from the toolbar');
+  assert.deepEqual(manifest.content_scripts, [{ matches: ['http://localhost:3000/*'], js: ['content.js'], run_at: 'document_idle' }]);
+  assert.deepEqual(manifest.commands, {
+    'toggle-overlay': {
+      suggested_key: { default: 'Alt+Shift+E' },
+      description: 'Toggle the Pi devloop feedback overlay',
+    },
+  });
   assert.match(workerConfig[2], /fresh-secret/);
   assert(workerConfig[2].includes('http://localhost:3000'));
   assert(!workerConfig[2].includes('window.__PI_DEVLOOP__'));
