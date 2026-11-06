@@ -42,7 +42,9 @@ test('launches an isolated Chrome at the ready URL and closes only its owned chi
   const manifestConfig = calls.find(([kind, file]) => kind === 'writeFile' && file.endsWith('manifest.json'));
   const manifest = JSON.parse(manifestConfig[2]);
   assert.deepEqual(manifest.host_permissions, ['http://localhost:3000/*', 'http://127.0.0.1:43200/*']);
+  assert.deepEqual(manifest.permissions, ['activeTab']);
   assert.deepEqual(manifest.content_scripts, [{ matches: ['http://localhost:3000/*'], js: ['content.js'], run_at: 'document_idle' }]);
+  assert.equal(manifest.action.default_popup, 'popup.html');
   assert.deepEqual(manifest.commands, {
     'toggle-overlay': {
       suggested_key: { default: 'Alt+Shift+E' },

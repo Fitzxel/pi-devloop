@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pi Devloop</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <main class="popup" aria-labelledby="title">
+      <header class="header">
+        <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v14H5z"/><path d="M9 9h6v6H9z"/></svg></span>
+        <div><h1 id="title">Pi Devloop</h1><p class="subtitle">Page feedback</p></div>
+      </header>
+      <section class="activation" aria-labelledby="activation-title">
+        <div class="status-row">
+          <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+          <div><h2 id="activation-title">Ready to select</h2><p id="status" role="status" aria-live="polite">Connect to the active page to begin.</p></div>
+        </div>
+        <button id="toggle" class="toggle" type="button">Activate selection</button>
+        <p class="shortcut">Keyboard shortcut <kbd>Alt</kbd><span aria-hidden="true">+</span><kbd>Shift</kbd><span aria-hidden="true">+</span><kbd>E</kbd></p>
+      </section>
+      <p class="note">Choose an element on the page, then describe the change.</p>
+    </main>
+  </body>
+</html>

@@ -8,7 +8,7 @@ Unpacked Chrome Manifest V3 extension used by devloop-managed Chrome to select a
 
 | Task | Location | Notes |
 | --- | --- | --- |
-| Permissions and extension identity | `manifest.json` | MV3; `activeTab` and `scripting`; no static host permissions |
+| Permissions and extension identity | `manifest.json` | MV3; `activeTab` only; no static host permissions |
 | Keyboard and tab activation | `service-worker.js` | Handles the `Alt+Shift+E` command and popup messages for the configured tab |
 | Automatic page injection and feedback overlay | `content.js` | Target-origin-only loading; bounded element context and receiver submission |
 | Popup activation UI | `popup.html`, `popup.css`, `popup.js` | Extension action popup; communicates with the active tab |

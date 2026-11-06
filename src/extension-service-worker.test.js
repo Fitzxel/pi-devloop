@@ -10,14 +10,12 @@ test('Alt+Shift+E toggles the overlay only in the configured dev-server tab', as
   const messages = [];
   const tab = { id: 12, url: 'http://localhost:3000/page' };
   const chrome = {
-    action: { onClicked: { addListener() {} } },
     commands: { onCommand: { addListener(listener) { commandListeners.push(listener); } } },
     runtime: { id: 'extension-id', onMessage: { addListener() {} } },
     tabs: {
       async query(query) { assert.equal(query.active, true); assert.equal(query.lastFocusedWindow, true); return [tab]; },
       async sendMessage(tabId, message) { messages.push([tabId, message]); },
     },
-    scripting: { async executeScript() {} },
   };
   const context = {
     DEVLOOP_CONFIG: { endpoint: 'http://127.0.0.1:43200/selection', token: 'secret', targetOrigin: 'http://localhost:3000' },
