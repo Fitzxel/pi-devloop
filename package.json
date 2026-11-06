@@ -1,5 +1,5 @@
 {
-  "name": "pi-devloop",
+  "name": "@fitzxel/pi-devloop",
   "version": "0.1.0",
   "description": "Pi extension for managing Herdr dev servers and browser feedback",
   "type": "module",

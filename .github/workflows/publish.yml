@@ -72,4 +72,4 @@ jobs:
           NODE
       - name: Publish package
         if: steps.version.outputs.bumped == 'true'
-        run: npm publish
+        run: npm publish --access public
