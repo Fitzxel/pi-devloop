@@ -1,6 +1,6 @@
 # pi-devloop
 
-A Pi extension starter for dev-server feedback and browser element selection through Herdr.
+A Pi extension for browser-driven development. Start and manage dev servers with Herdr, open your project in Chrome, and connect Chrome DevTools so Pi can inspect the page. Select elements in the browser and send their context to Pi to iterate on changes live.
 
 ## Status
 
