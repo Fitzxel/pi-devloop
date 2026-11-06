@@ -118,6 +118,31 @@ test('feedback server accepts versioned individual and batch target submissions'
   assert.deepEqual(received, submissions, 'accepted submissions must reach the agent unchanged');
 });
 
+test('feedback server accepts stable target IDs above five while retaining the active-target cap', async (t) => {
+  const received = [];
+  const server = createFeedbackServer({ token: 'multi-token', onSelection: (item) => received.push(item) });
+  const address = await server.listen();
+  t.after(() => server.close());
+  const endpoint = `http://127.0.0.1:${address.port}/selection`;
+  const headers = { 'content-type': 'application/json', origin: `chrome-extension://${DEVLOOP_EXTENSION_ID}`, authorization: 'Bearer multi-token' };
+  const target = (number) => ({ number, selector: `#target-${number}`, instruction: `Change target ${number}` });
+  const payload = { version: 2, mode: 'individual', pageUrl: 'http://localhost:3000/', targets: [target(6)] };
+  const accepted = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
+  assert.equal(accepted.status, 202);
+  assert.deepEqual(received, [payload], 'a stable target number above five reaches the agent unchanged');
+
+  const tooManyTargets = {
+    version: 2,
+    mode: 'batch',
+    pageUrl: 'http://localhost:3000/',
+    globalInstruction: 'Arrange the selection',
+    targets: Array.from({ length: 6 }, (_, index) => target(index + 1)),
+  };
+  const rejected = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(tooManyTargets) });
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(received, [payload], 'the five-target limit remains enforced after allowing larger IDs');
+});
+
 test('feedback server rejects invalid multi-target submissions without forwarding them', async (t) => {
   const received = [];
   const server = createFeedbackServer({ token: 'multi-token', onSelection: (item) => received.push(item) });
@@ -133,6 +158,8 @@ test('feedback server rejects invalid multi-target submissions without forwardin
     { ...valid, targets: [] },
     { ...valid, targets: Array.from({ length: 6 }, (_, index) => target(index + 1)) },
     { ...valid, targets: [target(1), target(1)] },
+    { ...valid, targets: [target(0)] },
+    { ...valid, targets: [target(Number.MAX_SAFE_INTEGER + 1)] },
     { ...valid, globalInstruction: '', targets: [target(1, ''), target(2, '')] },
     { ...valid, targets: [{ ...target(1), selector: '' }] },
     { ...valid, targets: [{ ...target(1), instruction: 'x'.repeat(4001) }] },

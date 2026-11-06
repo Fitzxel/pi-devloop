@@ -237,6 +237,14 @@
   childButton.disabled = true;
   toolbarArrows.append(parentButton);
   toolbarArrows.append(childButton);
+  const removeTargetButton = document.createElement('button');
+  removeTargetButton.className = 'toolbar-button remove-target-button';
+  removeTargetButton.type = 'button';
+  removeTargetButton.dataset.removeTarget = 'true';
+  removeTargetButton.setAttribute('aria-label', 'Remove active element from selection');
+  removeTargetButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  removeTargetButton.disabled = true;
+  toolbarArrows.append(removeTargetButton);
   toolbarHeader.append(toolbarArrows);
   const targetInstructionLabel = document.createElement('label');
   targetInstructionLabel.className = 'label';
@@ -315,6 +323,7 @@
   showShortcutToast();
 
   const targets = [];
+  let nextTargetNumber = 1;
   let activeTarget = null;
   let focusReturnTarget = null;
   let globalInstruction = '';
@@ -378,6 +387,7 @@
     childButton.disabled = !active || batchSending || !target || target.sending || !getNavigationCandidate(target, 'child');
     targetInstruction.disabled = !active || batchSending || !target || target.sending;
     targetSend.disabled = !active || batchSending || !target || target.sending || !target.instruction.trim();
+    removeTargetButton.disabled = !active || batchSending || !target || target.sending;
   };
 
   const updateGlobalToolbar = () => {
@@ -448,6 +458,7 @@
     targetStatus.className = `submit-status${activeTarget.statusKind ? ` ${activeTarget.statusKind}` : ''}`;
     targetStatus.setAttribute('role', activeTarget.statusKind === 'error' ? 'alert' : 'status');
     targetSend.textContent = activeTarget.sending ? 'Sending…' : 'Send';
+    removeTargetButton.setAttribute('aria-label', `Remove element ${activeTarget.number} from selection`);
     for (const target of targets) positionTarget(target);
     updateToolbarAvailability();
     updateGlobalToolbar();
@@ -474,9 +485,13 @@
       showFeedbackNotice('You can select up to five elements. Press Escape to start over.', 'error');
       return;
     }
-    if (targets.length === 0) focusReturnTarget = ui.activeElement || document.activeElement;
+    if (targets.length === 0 && !focusReturnTarget) focusReturnTarget = ui.activeElement || document.activeElement;
+    if (!Number.isSafeInteger(nextTargetNumber)) {
+      showFeedbackNotice('No more target numbers are available. Press Escape to reset.', 'error');
+      return;
+    }
     const target = {
-      number: targets.length + 1,
+      number: nextTargetNumber,
       element,
       instruction: '',
       sending: false,
@@ -490,10 +505,31 @@
     target.label.type = 'button';
     target.label.dataset.number = String(target.number);
     target.label.addEventListener('click', () => setActiveTarget(target, true));
+    nextTargetNumber += 1;
     targets.push(target);
     ui.append(target.marker);
     ui.append(target.label);
     setActiveTarget(target, true);
+  };
+
+  const removeActiveTarget = () => {
+    const target = activeTarget;
+    if (!target || target.sending || batchSending) return;
+    saveActiveInstruction();
+    const removedIndex = targets.indexOf(target);
+    if (removedIndex < 0) return;
+    target.marker.remove();
+    target.label.remove();
+    targets.splice(removedIndex, 1);
+    activeTarget = targets[Math.min(removedIndex, targets.length - 1)] ?? null;
+    if (!activeTarget) {
+      targetInstruction.value = '';
+      targetStatus.textContent = '';
+      targetStatus.className = 'submit-status';
+    }
+    updateTargetToolbar();
+    if (activeTarget) targetInstruction.focus();
+    else globalInstructionInput.focus();
   };
 
   const clearTargets = () => {
@@ -502,6 +538,7 @@
       target.label.remove();
     }
     targets.length = 0;
+    nextTargetNumber = 1;
     activeTarget = null;
     hideHoverPreview();
     selectionToolbar.style.display = 'none';
@@ -636,6 +673,7 @@
 
   parentButton.addEventListener('click', () => navigateActiveTarget('parent'));
   childButton.addEventListener('click', () => navigateActiveTarget('child'));
+  removeTargetButton.addEventListener('click', removeActiveTarget);
 
   const onClick = (event) => {
     if (!active || isExtensionUiEvent(event)) return;

@@ -83,7 +83,7 @@ function isMultiTargetSubmission(value) {
 
   const numbers = new Set();
   for (const target of value.targets) {
-    if (!isRecord(target) || !Number.isInteger(target.number) || target.number < 1 || target.number > 5 || numbers.has(target.number) ||
+    if (!isRecord(target) || !Number.isSafeInteger(target.number) || target.number < 1 || numbers.has(target.number) ||
       !validText(target.selector, 1000) ||
       !validOptionalText(target.role, 200) || !validOptionalText(target.text, 1000) || !validOptionalText(target.outerHTML, 4000) ||
       !validOptionalText(target.instruction, MAX_TEXT) ||

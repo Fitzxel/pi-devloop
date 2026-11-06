@@ -180,6 +180,76 @@ test('shows the global composer on activation and keeps its preselection draft',
   assert.equal(sendAll.disabled, false);
 });
 
+test('removes one target without renumbering and keeps the five-target cap', () => {
+  const extension = loadContentScript();
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  for (let index = 0; index < 5; index += 1) clickPageElement(extension, new FakeElement('button'));
+  const shadow = getShadow(extension);
+  const toolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
+  const globalToolbar = findElement(shadow, (node) => node.className === 'global-toolbar');
+  const labels = shadow.children.filter((node) => node.className === 'selection-label');
+  const globalInstruction = globalToolbar.querySelector('textarea');
+  globalInstruction.value = 'Keep the surviving targets together';
+  globalInstruction.listeners.input({ target: globalInstruction });
+  labels[3].listeners.click();
+  toolbar.querySelector('textarea').value = 'Retain target 4';
+  toolbar.querySelector('textarea').listeners.input({ target: toolbar.querySelector('textarea') });
+  labels[4].listeners.click();
+  toolbar.querySelector('textarea').value = 'Discard target 5';
+  toolbar.querySelector('textarea').listeners.input({ target: toolbar.querySelector('textarea') });
+
+  const removeTarget = findElement(toolbar, (node) => node.dataset.removeTarget);
+  assert.ok(removeTarget, 'the active target has an accessible remove control');
+  removeTarget.listeners.click();
+  assert.equal(labels[4].removed, true);
+  assert.deepEqual(shadow.children.filter((node) => node.className === 'selection-label').map((node) => node.dataset.number), ['1', '2', '3', '4']);
+  assert.equal(toolbar.querySelector('textarea').value, 'Retain target 4');
+  assert.equal(globalInstruction.value, 'Keep the surviving targets together');
+
+  clickPageElement(extension, new FakeElement('button'));
+  assert.deepEqual(shadow.children.filter((node) => node.className === 'selection-label').map((node) => node.dataset.number), ['1', '2', '3', '4', '6']);
+  clickPageElement(extension, new FakeElement('button'));
+  assert.equal(shadow.children.filter((node) => node.className === 'selection-label').length, 5);
+  assert.ok(shadow.children.find((node) => node.className?.includes('error-notice')));
+
+  globalToolbar.onsubmit({ preventDefault() {} });
+  const batch = extension.sentMessages[0].selection;
+  assert.equal(batch.globalInstruction, 'Keep the surviving targets together');
+  assert.deepEqual(JSON.parse(JSON.stringify(batch.targets.map((target) => target.number))), [1, 2, 3, 4, 6]);
+  assert.equal(batch.targets[3].instruction, 'Retain target 4');
+  assert.equal(batch.targets.some((target) => target.number === 5), false);
+
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  clickPageElement(extension, new FakeElement('button'));
+  assert.equal(shadow.children.find((node) => node.className === 'selection-label').dataset.number, '1', 'a new activation session restarts IDs at one');
+});
+
+test('removing the final target keeps the composer active and preserves the original focus return', () => {
+  const extension = loadContentScript();
+  const originalFocus = new FakeElement('button');
+  extension.document.activeElement = originalFocus;
+  extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
+  clickPageElement(extension, new FakeElement('button'));
+  const shadow = getShadow(extension);
+  const toolbar = findElement(shadow, (node) => node.className === 'target-toolbar');
+  const globalToolbar = findElement(shadow, (node) => node.className === 'global-toolbar');
+  const globalInstruction = globalToolbar.querySelector('textarea');
+  const count = findElement(globalToolbar, (node) => node.className === 'global-toolbar-count');
+  const sendAll = findElement(globalToolbar, (node) => node.dataset.sendAll);
+
+  findElement(toolbar, (node) => node.dataset.removeTarget).listeners.click();
+  assert.equal(toolbar.style.display, 'none');
+  assert.equal(globalToolbar.style.display, 'flex');
+  assert.equal(count.textContent, '0/5 elements selected');
+  assert.equal(sendAll.disabled, true);
+  extension.document.activeElement = globalInstruction;
+  clickPageElement(extension, new FakeElement('button'));
+  assert.equal(shadow.children.find((node) => node.className === 'selection-label').dataset.number, '2');
+  extension.documentListeners.keydown({ key: 'Escape', preventDefault() {} });
+  assert.equal(originalFocus.focused, true, 're-adding after removing the last target must not replace the session focus return');
+});
+
 test('pins numbered targets on page clicks and leaves them unchanged on hover', () => {
   const extension = loadContentScript();
   extension.runtimeListeners[0]({ type: 'devloop:toggle' }, null, () => {});
