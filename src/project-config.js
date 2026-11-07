@@ -2,7 +2,7 @@ import { readFile, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
 const CONFIG_PATH = '.pi/devloop.json';
-const ALLOWED_KEYS = new Set(['command', 'url', 'timeout', 'layout', 'tabName', 'browserUrl']);
+const ALLOWED_KEYS = new Set(['command', 'url', 'timeout', 'readyPattern', 'layout', 'tabName', 'browserUrl']);
 
 export async function readProjectSettings(cwd) {
   let config;
@@ -17,8 +17,8 @@ export async function readProjectSettings(cwd) {
 
 export function parseSettingArgs(args) {
   const match = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
-  if (!match) throw new Error('Usage: /devloop:set <command|url|timeout|layout|tabName|browserUrl> [value]');
-  if (!ALLOWED_KEYS.has(match[1])) throw new Error('Setting must be one of: command, url, timeout, layout, tabName, browserUrl');
+  if (!match) throw new Error('Usage: /devloop:set <command|url|timeout|readyPattern|layout|tabName|browserUrl> [value]');
+  if (!ALLOWED_KEYS.has(match[1])) throw new Error('Setting must be one of: command, url, timeout, readyPattern, layout, tabName, browserUrl');
   const value = match[2]?.trim();
   return { key: match[1], value: value || undefined };
 }
@@ -44,6 +44,7 @@ export async function getProjectConfig(cwd) {
       command: configured.command ?? null,
       url: configured.url ?? null,
       timeout: configured.timeout ?? null,
+      readyPattern: configured.readyPattern ?? null,
       layout: configured.layout ?? null,
       tabName: configured.tabName ?? null,
       browserUrl: configured.browserUrl ?? null,
@@ -76,6 +77,11 @@ export async function setProjectConfig(cwd, key, rawValue) {
   } else if (key === 'layout') {
     if (rawValue !== 'tab' && rawValue !== 'split') throw new Error('layout must be tab or split');
     config.layout = rawValue;
+  } else if (key === 'readyPattern') {
+    if (typeof rawValue !== 'string' || !rawValue.trim() || rawValue.length > 500 || /[\0\r\n]/.test(rawValue)) {
+      throw new Error('readyPattern must be a non-empty single-line string (max 500 characters)');
+    }
+    config.readyPattern = rawValue;
   } else if (key === 'tabName') {
     if (typeof rawValue !== 'string' || !rawValue.trim() || rawValue.length > 80 || /[\0\r\n]/.test(rawValue)) {
       throw new Error('tabName must be a non-empty single-line string (max 80 characters)');

@@ -12,20 +12,21 @@ test('project settings are optional and can be changed independently', async (t)
 
   assert.deepEqual(await getProjectConfig(cwd), {
     command: 'npm run dev', url: null, timeout: 30000, layout: 'tab', tabName: 'devloop', browserUrl: null,
-    configured: { command: null, url: null, timeout: null, layout: null, tabName: null, browserUrl: null },
+    configured: { command: null, url: null, timeout: null, readyPattern: null, layout: null, tabName: null, browserUrl: null },
   });
   await setProjectConfig(cwd, 'command', 'pnpm dev -- --host 0.0.0.0');
   await setProjectConfig(cwd, 'url', 'https://preview.example.test');
   await setProjectConfig(cwd, 'timeout', '45000');
+  await setProjectConfig(cwd, 'readyPattern', 'started\\s+on');
   await setProjectConfig(cwd, 'layout', 'split');
   await setProjectConfig(cwd, 'tabName', 'API server');
   await setProjectConfig(cwd, 'browserUrl', 'http://127.0.0.1:9333');
   assert.deepEqual(await getProjectConfig(cwd), {
     command: 'pnpm dev -- --host 0.0.0.0', url: 'https://preview.example.test', timeout: 45000, layout: 'split', tabName: 'API server', browserUrl: 'http://127.0.0.1:9333',
-    configured: { command: 'pnpm dev -- --host 0.0.0.0', url: 'https://preview.example.test', timeout: 45000, layout: 'split', tabName: 'API server', browserUrl: 'http://127.0.0.1:9333' },
+    configured: { command: 'pnpm dev -- --host 0.0.0.0', url: 'https://preview.example.test', timeout: 45000, readyPattern: 'started\\s+on', layout: 'split', tabName: 'API server', browserUrl: 'http://127.0.0.1:9333' },
   });
   const persisted = JSON.parse(await readFile(path.join(cwd, '.pi/devloop.json'), 'utf8'));
-  assert.deepEqual(persisted, { command: 'pnpm dev -- --host 0.0.0.0', url: 'https://preview.example.test', timeout: 45000, layout: 'split', tabName: 'API server', browserUrl: 'http://127.0.0.1:9333' });
+  assert.deepEqual(persisted, { command: 'pnpm dev -- --host 0.0.0.0', url: 'https://preview.example.test', timeout: 45000, readyPattern: 'started\\s+on', layout: 'split', tabName: 'API server', browserUrl: 'http://127.0.0.1:9333' });
 
   await setProjectConfig(cwd, 'url', 'https://user:pass@preview.example.test');
   assert.equal((await getProjectConfig(cwd)).url, 'https://user:pass@preview.example.test');
@@ -41,7 +42,8 @@ test('set command parser preserves command arguments and treats a missing value 
   assert.deepEqual(parseSettingArgs('url'), { key: 'url', value: undefined });
   assert.deepEqual(parseSettingArgs('layout tab'), { key: 'layout', value: 'tab' });
   assert.deepEqual(parseSettingArgs('browserUrl http://127.0.0.1:9444'), { key: 'browserUrl', value: 'http://127.0.0.1:9444' });
-  assert.throws(() => parseSettingArgs('unknown value'), /one of: command, url, timeout, layout, tabName, browserUrl/);
+  assert.deepEqual(parseSettingArgs('readyPattern ready\\s+on'), { key: 'readyPattern', value: 'ready\\s+on' });
+  assert.throws(() => parseSettingArgs('unknown value'), /one of: command, url, timeout, readyPattern, layout, tabName, browserUrl/);
 });
 
 test('settings can be created for a project before it has package.json', async (t) => {
@@ -54,7 +56,7 @@ test('settings can be created for a project before it has package.json', async (
 test('project settings reject invalid keys, URL, and timeout', async (t) => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'pi-devloop-config-'));
   t.after(() => rm(cwd, { recursive: true, force: true }));
-  await assert.rejects(setProjectConfig(cwd, 'readyPattern', '.*'), /key must be/);
+  await assert.rejects(setProjectConfig(cwd, 'readyPattern', 'ready\nnow'), /single-line string/);
   await assert.rejects(setProjectConfig(cwd, 'url', 'javascript:alert(1)'), /http or https URL/);
   await assert.rejects(setProjectConfig(cwd, 'timeout', '0'), /positive integer/);
   await assert.rejects(setProjectConfig(cwd, 'layout', 'stack'), /layout must be tab or split/);
